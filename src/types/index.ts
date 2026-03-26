@@ -68,6 +68,9 @@ export interface DashboardStats {
   sms_lifetime: number;
   total_contacts: number;
   total_campaigns: number;
+  text_limit: number;
+  grace_limit: number;
+  reset_date: string;
 }
 
 export interface AuthResponse {

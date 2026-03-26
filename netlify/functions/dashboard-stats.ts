@@ -19,7 +19,10 @@ export default async (req: Request) => {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
 
-    const [smsThisMonth, smsLifetime, contactsCount, campaignsCount] =
+    // Next month reset date
+    const resetDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+    const [smsThisMonth, smsLifetime, contactsCount, campaignsCount, orgData] =
       await Promise.all([
         supabase
           .from("message_logs")
@@ -43,13 +46,28 @@ export default async (req: Request) => {
           .from("campaigns")
           .select("id", { count: "exact", head: true })
           .eq("org_id", auth.org_id),
+
+        supabase
+          .from("organizations")
+          .select("text_limit")
+          .eq("id", auth.org_id)
+          .single(),
       ]);
 
+    const textLimit = orgData.data?.text_limit ?? 600;
+    const textsUsed = smsThisMonth.count ?? 0;
+    const activeContacts = contactsCount.count ?? 0;
+    // Grace: 2 extra campaigns worth of contacts
+    const graceLimit = textLimit + (activeContacts * 2);
+
     return jsonResponse({
-      sms_this_month: smsThisMonth.count ?? 0,
+      sms_this_month: textsUsed,
       sms_lifetime: smsLifetime.count ?? 0,
-      total_contacts: contactsCount.count ?? 0,
+      total_contacts: activeContacts,
       total_campaigns: campaignsCount.count ?? 0,
+      text_limit: textLimit,
+      grace_limit: graceLimit,
+      reset_date: resetDate.toISOString(),
     });
   } catch {
     return jsonResponse({ error: "Something went wrong" }, 500);

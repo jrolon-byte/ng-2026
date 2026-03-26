@@ -2,7 +2,10 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { getContacts, createContact, deleteContact } from '../services/contacts';
 import { sendCampaign } from '../services/campaigns';
-import type { Contact } from '../types';
+import { getStats } from '../services/dashboard';
+import { getOrgSettings, updateOrgSettings } from '../services/orgs';
+import type { Contact, DashboardStats } from '../types';
+import type { OrgSettings } from '../services/orgs';
 import { formatPhone } from '../utils/formatPhone';
 import { formatPhoneInput } from '../utils/formatPhoneInput';
 import TopNav from '../components/TopNav';
@@ -13,6 +16,8 @@ export default function Engage() {
   const { user } = useAuth();
   const [customerList, setCustomerList] = useState<Contact[]>([]);
   const [showAddCustomer, setShowAddCustomer] = useState(false);
+  const [usage, setUsage] = useState<DashboardStats | null>(null);
+  const [orgSettings, setOrgSettings] = useState<OrgSettings | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Add customer
@@ -27,10 +32,38 @@ export default function Engage() {
   // Delete confirm per-customer
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
+  // Settings editor
+  const [editingSettings, setEditingSettings] = useState(false);
+  const [editPrefix, setEditPrefix] = useState('');
+  const [editSuffix, setEditSuffix] = useState('');
+  const [savingSettings, setSavingSettings] = useState(false);
+
   useEffect(() => {
     if (!user) return;
+    setLoading(true);
+    setCustomerList([]);
     fetchCustomers();
-  }, [user]);
+    fetchUsage();
+    fetchOrgSettings();
+  }, [user?.org_id]);
+
+  const fetchOrgSettings = async () => {
+    try {
+      const data = await getOrgSettings();
+      setOrgSettings(data);
+    } catch {
+      // silent
+    }
+  };
+
+  const fetchUsage = async () => {
+    try {
+      const data = await getStats();
+      setUsage(data);
+    } catch {
+      // silent
+    }
+  };
 
   const fetchCustomers = async () => {
     try {
@@ -65,11 +98,29 @@ export default function Engage() {
     }
   };
 
+  // Usage helpers
+  const isHardLocked = usage
+    ? usage.sms_this_month + customerList.length > usage.grace_limit
+    : false;
+  const isOverLimit = usage
+    ? usage.sms_this_month >= usage.text_limit
+    : false;
+
+  // Character limit calculation
+  const prefix = orgSettings?.message_prefix ?? '';
+  const suffix = orgSettings?.message_suffix ?? '';
+  const maxChars = 160 - prefix.length - suffix.length;
+  const fullPreview = prefix + (message || 'Your message here...') + suffix;
+
   // Send message
   const onSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if ([0, 1, 2, 3, 4, 5].includes(message.length)) {
       setShowNoMessage(true);
+      return;
+    }
+    if (isHardLocked) {
+      alert('Monthly text limit reached. Contact your administrator to upgrade your plan.');
       return;
     }
     setSending(true);
@@ -78,6 +129,7 @@ export default function Engage() {
       alert('Success! All Your clients have been outreached.');
       setMessage('');
       setShowNoMessage(false);
+      fetchUsage(); // refresh usage bar
     } catch {
       alert('Failed to send messages. Please try again.');
     } finally {
@@ -93,6 +145,29 @@ export default function Engage() {
       fetchCustomers();
     } catch {
       // silent
+    }
+  };
+
+  // Settings editor
+  const openSettings = () => {
+    setEditPrefix(orgSettings?.message_prefix ?? '');
+    setEditSuffix(orgSettings?.message_suffix ?? '');
+    setEditingSettings(true);
+  };
+
+  const saveSettings = async () => {
+    setSavingSettings(true);
+    try {
+      await updateOrgSettings({
+        message_prefix: editPrefix,
+        message_suffix: editSuffix,
+      });
+      setEditingSettings(false);
+      fetchOrgSettings();
+    } catch {
+      alert('Failed to save settings');
+    } finally {
+      setSavingSettings(false);
     }
   };
 
@@ -160,19 +235,55 @@ export default function Engage() {
         </div>
       )}
 
+      {/* Usage Bar — only shows in grace period or locked */}
+      {usage && !loading && isOverLimit && (
+        <div className="contain">
+          <div className={`usage-bar ${isHardLocked ? 'usage-bar--locked' : 'usage-bar--warning'}`}>
+            <div className="usage-bar-header">
+              <span className="usage-bar-label">
+                {usage.sms_this_month.toLocaleString()} / {usage.text_limit.toLocaleString()} texts
+              </span>
+              <span className="usage-bar-reset">
+                Resets {new Date(usage.reset_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              </span>
+            </div>
+            <div className="usage-bar-track">
+              <div
+                className="usage-bar-fill"
+                style={{ width: '100%' }}
+              />
+            </div>
+            {!isHardLocked && (
+              <p className="usage-bar-msg">You've exceeded your plan. Upgrade to avoid interruption.</p>
+            )}
+            {isHardLocked && (
+              <p className="usage-bar-msg">Limit reached. Contact James to upgrade your plan.</p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Textarea / Send */}
       <div className="contain">
         <form className="engagement-form">
+          <p className="engage-tip">💡 Use <strong>@Name</strong> to personalize — each customer sees their own name</p>
+
           <div className="form-control">
             <textarea
-              placeholder="Engage your customer list to bring them through your door."
+              placeholder="Ey @Name, pasa por la barberia hoy! 🔥"
               value={message}
               onChange={(e) => {
-                setMessage(e.target.value);
+                if (e.target.value.length <= maxChars) {
+                  setMessage(e.target.value);
+                }
                 if (showNoMessage) setShowNoMessage(false);
               }}
-              rows={10}
+              rows={6}
+              maxLength={maxChars}
             />
+            <div className="engage-char-count">
+              <span>{message.length} / {maxChars}</span>
+            </div>
             {showNoMessage && (
               <p className="errorText">
                 Do you really want to text {customerList.length} customers
@@ -182,15 +293,101 @@ export default function Engage() {
             )}
           </div>
 
+          {/* iMessage-style preview */}
+          {message.length > 0 && (
+            <div className="sms-preview-section">
+              <div className="sms-preview-header">
+                <span className="sms-preview-label">Message Preview</span>
+                <button
+                  type="button"
+                  className="sms-preview-edit"
+                  onClick={openSettings}
+                >
+                  Edit
+                </button>
+              </div>
+              <div className="sms-preview">
+                <div className="sms-bubble">{fullPreview}</div>
+              </div>
+            </div>
+          )}
+
+          {/* Inline settings editor */}
+          {editingSettings && (() => {
+            const maxCombined = 60;
+            const combinedUsed = editPrefix.length + editSuffix.length;
+            const prefixMax = maxCombined - editSuffix.length;
+            const suffixMax = maxCombined - editPrefix.length;
+            const messageCharsLeft = 160 - combinedUsed;
+
+            return (
+            <div className="settings-editor">
+              <div className="form-control">
+                <label className="settings-label">Header (before your message)</label>
+                <input
+                  type="text"
+                  value={editPrefix}
+                  onChange={(e) => {
+                    if (e.target.value.length <= prefixMax) setEditPrefix(e.target.value);
+                  }}
+                  placeholder="YourBusiness: "
+                  maxLength={prefixMax}
+                />
+                <div className="engage-char-count">
+                  <span>{editPrefix.length} / {prefixMax}</span>
+                </div>
+              </div>
+              <div className="form-control">
+                <label className="settings-label">Footer (after your message)</label>
+                <input
+                  type="text"
+                  value={editSuffix}
+                  onChange={(e) => {
+                    if (e.target.value.length <= suffixMax) setEditSuffix(e.target.value);
+                  }}
+                  placeholder=" -- Call Now: 407-000-0000"
+                  maxLength={suffixMax}
+                />
+                <div className="engage-char-count">
+                  <span>{editSuffix.length} / {suffixMax}</span>
+                </div>
+              </div>
+              <p className="settings-remaining">
+                {messageCharsLeft} characters left for your message
+              </p>
+              <div className="settings-actions">
+                <button
+                  type="button"
+                  className="btn"
+                  style={{ color: 'white', background: 'black' }}
+                  onClick={saveSettings}
+                  disabled={savingSettings}
+                >
+                  {savingSettings ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  style={{ color: '#666', background: '#f4f4f4' }}
+                  onClick={() => setEditingSettings(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+            );
+          })()}
+
           {sending ? (
             <Loader />
           ) : (
             <button
               onClick={onSendMessage}
               className="btn btn-blue"
-              style={{ color: 'white', background: '#3399ff' }}
+              style={{ color: 'white', background: isHardLocked ? '#ccc' : '#3399ff' }}
+              disabled={isHardLocked || customerList.length === 0}
             >
-              Send Mass Text 📲
+              {isHardLocked ? 'Limit Reached' : 'Send Mass Text 📲'}
             </button>
           )}
         </form>

@@ -33,6 +33,16 @@ export default async (req: Request) => {
     const twilioClient = twilio(accountSid, authToken);
 
     // Fetch active, opted-in contacts for the org
+    // Fetch org settings for message prefix/suffix
+    const { data: orgSettings } = await supabase
+      .from("organizations")
+      .select("message_prefix, message_suffix")
+      .eq("id", auth.org_id)
+      .single();
+
+    const prefix = orgSettings?.message_prefix ?? "";
+    const suffix = orgSettings?.message_suffix ?? "";
+
     const { data: contacts, error: contactsError } = await supabase
       .from("contacts")
       .select("id, first_name, phone")
@@ -46,6 +56,35 @@ export default async (req: Request) => {
 
     if (!contacts || contacts.length === 0) {
       return jsonResponse({ error: "No active contacts to send to" }, 400);
+    }
+
+    // --- Usage limit check ---
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
+
+    const [usageResult, orgResult] = await Promise.all([
+      supabase
+        .from("message_logs")
+        .select("id", { count: "exact", head: true })
+        .eq("org_id", auth.org_id)
+        .gte("sent_at", monthStart)
+        .lt("sent_at", monthEnd),
+      supabase
+        .from("organizations")
+        .select("text_limit")
+        .eq("id", auth.org_id)
+        .single(),
+    ]);
+
+    const textsUsed = usageResult.count ?? 0;
+    const textLimit = orgResult.data?.text_limit ?? 600;
+    const graceLimit = textLimit + (contacts.length * 2);
+
+    if (textsUsed + contacts.length > graceLimit) {
+      return jsonResponse({
+        error: "Monthly text limit reached. Contact your administrator to upgrade your plan.",
+      }, 403);
     }
 
     // Create campaign record
@@ -74,7 +113,7 @@ export default async (req: Request) => {
     // Send SMS to each contact
     for (const contact of contacts) {
       const name = contact.first_name || "Friend";
-      const personalizedBody = body.replace(/@Name/g, name);
+      const personalizedBody = prefix + body.replace(/@Name/g, name) + suffix;
 
       try {
         const messageOptions: Record<string, unknown> = {
