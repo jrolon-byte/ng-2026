@@ -1,0 +1,609 @@
+/* ============================================
+   NotifyGrid 2026 — OG Styles (1:1 copy)
+   ============================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400&display=swap');
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+
+body {
+  font-family: 'Poppins', sans-serif;
+}
+
+/* ============================================
+   Top Nav — OG header
+   ============================================ */
+
+.topnav {
+  width: 100%;
+  box-shadow: 0 2px 5px 1px rgb(64 60 67 / 16%);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: #fff;
+}
+
+.topnav-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  height: 56px;
+}
+
+.topnav-brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.topnav-title {
+  font-weight: 800;
+  font-size: 17px;
+  color: black;
+}
+
+.topnav-links {
+  display: flex;
+  align-items: center;
+}
+
+.topnav-link {
+  color: black;
+  text-align: center;
+  padding: 14px 16px;
+  text-decoration: none;
+  font-size: 17px;
+  border-radius: 16px;
+  background: none;
+  border: none;
+  font-family: 'Poppins', sans-serif;
+  cursor: pointer;
+}
+
+.topnav-link:hover {
+  background-color: #f2f2f2;
+  color: black;
+}
+
+.topnav-link--active {
+  letter-spacing: 2px;
+  color: #3399ff !important;
+  border-radius: 0;
+}
+
+.topnav-logout {
+  color: black;
+  cursor: pointer;
+}
+
+/* ============================================
+   Hamburger button
+   ============================================ */
+
+.hamburger {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  width: 44px;
+  height: 44px;
+  padding: 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.hamburger-line {
+  display: block;
+  width: 22px;
+  height: 2px;
+  background: #111;
+  border-radius: 2px;
+  transition: transform 0.3s ease, opacity 0.2s ease;
+  transform-origin: center;
+}
+
+.hamburger--open .hamburger-line:nth-child(1) {
+  transform: translateY(7px) rotate(45deg);
+}
+
+.hamburger--open .hamburger-line:nth-child(2) {
+  opacity: 0;
+}
+
+.hamburger--open .hamburger-line:nth-child(3) {
+  transform: translateY(-7px) rotate(-45deg);
+}
+
+/* ============================================
+   Mobile menu dropdown
+   ============================================ */
+
+.mobile-menu {
+  display: none;
+  flex-direction: column;
+  background: #fff;
+  overflow: hidden;
+  max-height: 0;
+  transition: max-height 0.35s ease, padding 0.35s ease;
+  padding: 0 16px;
+}
+
+.mobile-menu--open {
+  max-height: 300px;
+  padding: 8px 16px 16px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.mobile-menu-link {
+  display: block;
+  padding: 14px 0;
+  font-size: 17px;
+  font-family: 'Poppins', sans-serif;
+  color: black;
+  text-decoration: none;
+  border-bottom: 1px solid #f4f4f4;
+  background: none;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  text-align: left;
+  width: 100%;
+  cursor: pointer;
+}
+
+.mobile-menu-link:last-child {
+  border-bottom: none;
+}
+
+.mobile-menu-link--active {
+  color: #3399ff;
+  letter-spacing: 1px;
+  font-weight: 500;
+}
+
+.mobile-menu-logout {
+  color: #999;
+}
+
+.mobile-menu-overlay {
+  position: fixed;
+  inset: 0;
+  top: 56px;
+  background: rgba(0, 0, 0, 0.15);
+  z-index: -1;
+}
+
+/* ============================================
+   Responsive: show hamburger, hide desktop links
+   ============================================ */
+
+@media only screen and (max-width: 600px) {
+  .topnav-links {
+    display: none;
+  }
+
+  .hamburger {
+    display: flex;
+  }
+
+  .mobile-menu {
+    display: flex;
+  }
+}
+
+/* ============================================
+   Layout containers — OG styles
+   ============================================ */
+
+.container {
+  max-width: 500px;
+  margin: 30px auto;
+  overflow: auto;
+  min-height: 300px;
+  padding: 30px;
+  border-radius: 5px;
+}
+
+.contain {
+  width: 55%;
+  margin: 5px auto;
+  overflow: auto;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+@media only screen and (max-width: 750px) {
+  .contain {
+    width: 100%;
+    padding: 5px;
+  }
+}
+
+.center {
+  text-align: center;
+}
+
+.floatRight {
+  float: right;
+}
+
+/* ============================================
+   Header (page title bar)
+   ============================================ */
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+/* ============================================
+   Buttons — OG styles
+   ============================================ */
+
+.btn {
+  display: inline-block;
+  background: #000;
+  color: #fff;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  text-decoration: none;
+  font-size: 15px;
+  font-family: inherit;
+}
+
+.btn:focus {
+  outline: none;
+}
+
+.btn:active {
+  transform: scale(0.98);
+}
+
+.btn:hover {
+  filter: brightness(95%);
+}
+
+.btn-block {
+  display: block;
+}
+
+.btn-blue {
+  display: block;
+  width: 100%;
+  background-color: #3399ff;
+}
+
+/* ============================================
+   Forms — OG styles
+   ============================================ */
+
+.add-form {
+  margin-bottom: 40px;
+}
+
+.engagement-form {
+  margin-bottom: 40px;
+}
+
+.form-control {
+  margin: 20px 0;
+}
+
+.form-control label {
+  display: block;
+}
+
+.form-control input {
+  width: 100%;
+  height: 40px;
+  margin: 5px;
+  padding: 3px 7px;
+  font-size: 17px;
+}
+
+.form-control textarea {
+  width: 100%;
+  padding: 3px 7px;
+  font-size: 17px;
+  font-family: 'Poppins', sans-serif;
+}
+
+.errorText {
+  color: #721c24;
+}
+
+/* ============================================
+   Customer cards — OG styles
+   ============================================ */
+
+.customer {
+  background: #f4f4f4;
+  margin: 5px;
+  padding: 10px 20px;
+  border-radius: 10px;
+}
+
+.customer h3 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.customer p {
+  display: inline;
+}
+
+.customer.confirmDelete h3 {
+  justify-content: center;
+}
+
+.customer.confirmDelete .btnOptions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.customer.confirmDelete .btnOptions button {
+  margin-right: 20px;
+}
+
+/* ============================================
+   Loader
+   ============================================ */
+
+.loader-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 50px;
+}
+
+.loader-spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid #e0e0e0;
+  border-top-color: #3399ff;
+  border-radius: 50%;
+  animation: spin 1.5s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ============================================
+   Stats (Dashboard page)
+   ============================================ */
+
+.stats-grid {
+  display: flex;
+  gap: 2rem;
+  margin-left: 1rem;
+  flex-wrap: wrap;
+}
+
+.stat-card {
+  padding: 20px;
+}
+
+.stat-card-icon {
+  display: none;
+}
+
+.stat-card-value {
+  font-size: 50px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.stat-card-label {
+  font-size: 14px;
+  color: gray;
+  margin-top: 4px;
+}
+
+/* ============================================
+   Campaigns list
+   ============================================ */
+
+.campaigns-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.campaign-card {
+  background: #f4f4f4;
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.campaign-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.campaign-date {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: gray;
+}
+
+.campaign-status {
+  display: inline-flex;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.campaign-status--completed { background: #ecfdf5; color: #10b981; }
+.campaign-status--sending { background: #fffbeb; color: #f59e0b; }
+.campaign-status--failed { background: #fef2f2; color: #ef4444; }
+
+.campaign-body {
+  font-size: 14px;
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.campaign-stats {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.campaign-stat {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: gray;
+}
+
+.campaign-stat--success { color: #10b981; }
+.campaign-stat--fail { color: #ef4444; }
+
+/* ============================================
+   Alerts
+   ============================================ */
+
+.alert {
+  padding: 14px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+.alert--error {
+  background: #fef2f2;
+  color: #ef4444;
+}
+
+.alert--success {
+  background: #ecfdf5;
+  color: #10b981;
+}
+
+/* ============================================
+   Modal
+   ============================================ */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.modal {
+  background: #fff;
+  border-radius: 10px;
+  padding: 24px;
+  width: 100%;
+  max-width: 400px;
+}
+
+.modal-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.modal-body {
+  font-size: 14px;
+  color: gray;
+  line-height: 1.6;
+  margin-bottom: 24px;
+}
+
+.modal-body p {
+  margin-bottom: 8px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.message-preview {
+  background: #f0f0f0;
+  border-left: 3px solid #3399ff;
+  padding: 12px 16px;
+  margin: 12px 0;
+  border-radius: 0 8px 8px 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ============================================
+   Layout wrapper for secondary pages
+   ============================================ */
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.page-header h1 {
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.page-header p {
+  font-size: 13px;
+  color: gray;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: gray;
+}
+
+/* ============================================
+   Main content wrapper for dashboard/campaigns
+   ============================================ */
+
+.main-content {
+  background: #e6f2ff;
+  padding: 30px;
+  max-width: 100%;
+  margin: 0;
+}
