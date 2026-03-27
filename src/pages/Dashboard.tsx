@@ -27,7 +27,7 @@ export default function Dashboard() {
     };
 
     fetchStats();
-  }, [user]);
+  }, [user?.org_id]);
 
   const cards = stats
     ? [
@@ -58,6 +58,8 @@ export default function Dashboard() {
       ]
     : [];
 
+  const admin = stats?.admin;
+
   return (
     <Layout>
       <div className="page-header">
@@ -86,6 +88,42 @@ export default function Dashboard() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Super Admin — Cost Estimator */}
+      {admin && (
+        <div className="admin-section">
+          <h2>Cost Estimator</h2>
+          <p className="admin-subtitle">All organizations combined</p>
+
+          <div className="admin-grid">
+            <div className="admin-card">
+              <span className="admin-card-value">${admin.cost_this_month.toFixed(2)}</span>
+              <span className="admin-card-label">Estimated cost this month</span>
+              <span className="admin-card-detail">
+                {admin.global_sms_this_month.toLocaleString()} texts × $0.011 + ${admin.phone_monthly} phone
+              </span>
+            </div>
+
+            <div className="admin-card">
+              <span className="admin-card-value">${admin.cost_lifetime.toFixed(2)}</span>
+              <span className="admin-card-label">Estimated cost lifetime</span>
+              <span className="admin-card-detail">
+                {admin.global_sms_lifetime.toLocaleString()} texts × $0.011
+              </span>
+            </div>
+
+            <div className="admin-card">
+              <span className="admin-card-value">{admin.global_sms_this_month.toLocaleString()}</span>
+              <span className="admin-card-label">Total texts this month (all clients)</span>
+            </div>
+
+            <div className="admin-card">
+              <span className="admin-card-value">{admin.total_orgs}</span>
+              <span className="admin-card-label">Active organizations</span>
+            </div>
+          </div>
         </div>
       )}
     </Layout>

@@ -10,6 +10,7 @@ import { formatPhone } from '../utils/formatPhone';
 import { formatPhoneInput } from '../utils/formatPhoneInput';
 import TopNav from '../components/TopNav';
 import Loader from '../components/Loader';
+import UpgradePrompt from '../components/UpgradePrompt';
 import { FaTrashAlt } from 'react-icons/fa';
 
 export default function Engage() {
@@ -105,6 +106,8 @@ export default function Engage() {
   const isOverLimit = usage
     ? usage.sms_this_month >= usage.text_limit
     : false;
+  const isFirstBlastUsed = orgSettings?.plan_status === 'first_blast'
+    && usage && usage.sms_this_month > 0;
 
   // Character limit calculation
   const prefix = orgSettings?.message_prefix ?? '';
@@ -260,6 +263,13 @@ export default function Engage() {
               <p className="usage-bar-msg">Limit reached. Contact James to upgrade your plan.</p>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Upgrade prompt for first_blast users */}
+      {isFirstBlastUsed && (
+        <div className="contain">
+          <UpgradePrompt />
         </div>
       )}
 

@@ -63,6 +63,15 @@ export interface MessageLog {
   created_at: string;
 }
 
+export interface AdminStats {
+  global_sms_this_month: number;
+  global_sms_lifetime: number;
+  cost_this_month: number;
+  cost_lifetime: number;
+  phone_monthly: number;
+  total_orgs: number;
+}
+
 export interface DashboardStats {
   sms_this_month: number;
   sms_lifetime: number;
@@ -71,6 +80,7 @@ export interface DashboardStats {
   text_limit: number;
   grace_limit: number;
   reset_date: string;
+  admin?: AdminStats;
 }
 
 export interface AuthResponse {

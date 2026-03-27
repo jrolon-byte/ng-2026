@@ -35,6 +35,7 @@ export interface OrgSettings {
   message_prefix: string | null;
   message_suffix: string | null;
   text_limit: number;
+  plan_status: string | null;
 }
 
 export async function getOrgSettings(): Promise<OrgSettings | null> {

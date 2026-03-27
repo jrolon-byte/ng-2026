@@ -611,6 +611,67 @@ body {
 }
 
 /* ============================================
+   Admin Cost Estimator
+   ============================================ */
+
+.admin-section {
+  margin-top: 40px;
+  padding-top: 24px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.admin-section h2 {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.admin-subtitle {
+  font-size: 13px;
+  color: #999;
+  margin-bottom: 20px;
+}
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media only screen and (max-width: 750px) {
+  .admin-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.admin-card {
+  background: #f4f4f4;
+  border-radius: 10px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-card-value {
+  font-size: 28px;
+  font-weight: 600;
+  color: #111;
+  line-height: 1.1;
+}
+
+.admin-card-label {
+  font-size: 13px;
+  color: #666;
+  margin-top: 6px;
+}
+
+.admin-card-detail {
+  font-size: 11px;
+  color: #999;
+  margin-top: 4px;
+}
+
+/* ============================================
    Campaigns list
    ============================================ */
 
