@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { formatPhoneInput } from '../utils/formatPhoneInput';
 import { BASE_URL } from '../config/api';
 import Loader from '../components/Loader';
+import ngLogo from '../imgs/ng.png';
 
 export default function Signup() {
   const [businessName, setBusinessName] = useState('');
@@ -50,72 +51,90 @@ export default function Signup() {
   };
 
   return (
-    <div className="container">
-      <h2 className="center">Get Started</h2>
-      <p className="center" style={{ color: '#666', marginBottom: 20 }}>
-        $5 for your first blast
-      </p>
-      <form className="add-form">
-        <div className="form-control">
-          <input
-            type="text"
-            placeholder="Business Name"
-            value={businessName}
-            onChange={(e) => setBusinessName(e.target.value)}
-            required
-          />
+    <div>
+      {/* Mini navbar with logo + live business name */}
+      <nav className="signup-nav">
+        <div className="signup-nav-inner">
+          <div className="signup-nav-brand">
+            <img src={ngLogo} alt="NotifyGrid" style={{ height: 32 }} />
+            {businessName && (
+              <span className="signup-nav-business">{businessName}</span>
+            )}
+          </div>
+          <Link to="/login" className="signup-nav-login">Log In</Link>
         </div>
-        <div className="form-control">
-          <input
-            type="text"
-            placeholder="Your Name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-          />
+      </nav>
+
+      <div className="signup-page">
+        <div className="signup-card">
+          <h2 className="center">Get Started</h2>
+          <p className="center" style={{ color: '#888', marginBottom: 24, fontSize: 15 }}>
+            Send your first text to all your customers for <strong style={{ color: '#3399ff' }}>$5</strong>
+          </p>
+          <form className="add-form">
+            <div className="form-control">
+              <input
+                type="text"
+                placeholder="Business Name"
+                value={businessName}
+                onChange={(e) => setBusinessName(e.target.value)}
+                required
+              />
+            </div>
+            <div className="form-control">
+              <input
+                type="text"
+                placeholder="Your Name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+              />
+            </div>
+            <div className="form-control">
+              <input
+                type="text"
+                placeholder="Username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+              />
+            </div>
+            <div className="form-control">
+              <input
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
+            <div className="form-control">
+              <input
+                type="tel"
+                placeholder="Phone Number"
+                value={phone}
+                onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
+                maxLength={14}
+                required
+              />
+            </div>
+            {showLoader ? (
+              <Loader />
+            ) : (
+              <button
+                onClick={onSubmit}
+                className="btn btn-blue"
+                style={{ color: 'white', background: '#3399ff' }}
+              >
+                Continue to Payment →
+              </button>
+            )}
+          </form>
+          <p className="center" style={{ marginTop: 20, fontSize: 13, color: '#999' }}>
+            Already have an account? <Link to="/login" style={{ color: '#3399ff' }}>Log in</Link>
+          </p>
         </div>
-        <div className="form-control">
-          <input
-            type="text"
-            placeholder="Username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            required
-          />
-        </div>
-        <div className="form-control">
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-        </div>
-        <div className="form-control">
-          <input
-            type="tel"
-            placeholder="Phone Number"
-            value={phone}
-            onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
-            required
-          />
-        </div>
-        {showLoader ? (
-          <Loader />
-        ) : (
-          <button
-            onClick={onSubmit}
-            className="btn btn-block"
-            style={{ color: 'white', background: 'black' }}
-          >
-            Continue to Payment &rarr;
-          </button>
-        )}
-      </form>
-      <p className="center" style={{ marginTop: 20 }}>
-        Already have an account? <Link to="/login">Log in</Link>
-      </p>
+      </div>
     </div>
   );
 }

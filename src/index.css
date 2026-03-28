@@ -848,6 +848,98 @@ body {
    Main content wrapper for dashboard/campaigns
    ============================================ */
 
+/* ============================================
+   Signup Page
+   ============================================ */
+
+.signup-nav {
+  width: 100%;
+  box-shadow: 0 2px 5px 1px rgb(64 60 67 / 16%);
+  background: #fff;
+}
+
+.signup-nav-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  height: 56px;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.signup-nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.signup-nav-business {
+  font-size: 15px;
+  font-weight: 500;
+  color: #3399ff;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signup-nav-login {
+  font-size: 15px;
+  color: #666;
+  text-decoration: none;
+}
+
+.signup-nav-login:hover {
+  color: #3399ff;
+}
+
+.signup-page {
+  min-height: calc(100vh - 56px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 16px;
+  background: #f9fbff;
+}
+
+.signup-card {
+  width: 100%;
+  max-width: 440px;
+  background: #fff;
+  border-radius: 12px;
+  padding: 32px 24px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+}
+
+.signup-card h2 {
+  font-size: 24px;
+  margin-bottom: 4px;
+}
+
+.signup-card .btn-blue {
+  margin-top: 8px;
+  font-size: 16px;
+  border-radius: 8px;
+}
+
+.signup-card .btn-blue:hover {
+  filter: brightness(95%);
+}
+
+@media only screen and (max-width: 480px) {
+  .signup-page {
+    padding: 20px 12px;
+    align-items: flex-start;
+  }
+
+  .signup-card {
+    padding: 24px 16px;
+    box-shadow: none;
+    background: #fff;
+  }
+}
+
 .main-content {
   background: #e6f2ff;
   padding: 30px;

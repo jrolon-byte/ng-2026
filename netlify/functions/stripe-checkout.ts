@@ -21,11 +21,16 @@ export default async (req: Request) => {
 
     // ── Signup: one-time $5 payment ──
     if (type === "signup") {
-      const { business_name, first_name, last_name, username, password, phone } = body;
+      const { businessName, name, username, password, phone } = body;
 
-      if (!business_name || !first_name || !last_name || !username || !password || !phone) {
+      if (!businessName || !name || !username || !password || !phone) {
         return jsonResponse({ error: "Missing required signup fields" }, 400);
       }
+
+      // Split name into first/last
+      const nameParts = name.trim().split(/\s+/);
+      const first_name = nameParts[0];
+      const last_name = nameParts.slice(1).join(" ") || "";
 
       const session = await stripe.checkout.sessions.create({
         mode: "payment",
@@ -40,7 +45,7 @@ export default async (req: Request) => {
           },
         ],
         metadata: {
-          business_name,
+          business_name: businessName,
           first_name,
           last_name,
           username,
