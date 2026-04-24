@@ -38,7 +38,7 @@ export default function AdminGiftManager() {
   const [successFor, setSuccessFor] = useState<string | null>(null);
 
   const selectedOrg = orgs.find(o => o.id === orgId);
-  const hasPhone = Boolean(selectedOrg?.phone && selectedOrg.phone.trim().length > 0);
+  const hasPhone = Boolean(selectedOrg?.has_phone);
 
   // Re-template the SMS text when the admin picks a different customer or
   // changes the gift amount. Preserves their manual edits: if they've typed
@@ -177,7 +177,7 @@ export default function AdminGiftManager() {
 
         {sendSms && hasPhone && (
           <label className="gift-field gift-field--full">
-            <span>SMS text (sent to {selectedOrg?.phone})</span>
+            <span>SMS text (sent to their number on file)</span>
             <textarea
               rows={3}
               value={smsMessage}

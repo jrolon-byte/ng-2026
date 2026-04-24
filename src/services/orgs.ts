@@ -16,7 +16,9 @@ export interface Org {
   name: string;
   slug: string;
   locale?: string;
-  phone?: string | null;
+  /** Whether the org has a phone on file. The actual number never leaves the
+   * server — admin UI uses this boolean to decide whether to enable SMS. */
+  has_phone?: boolean;
 }
 
 export async function getOrgs(): Promise<Org[]> {

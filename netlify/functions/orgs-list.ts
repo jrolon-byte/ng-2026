@@ -26,6 +26,19 @@ export default async (req: Request) => {
       .eq("id", auth.id)
       .single();
 
+    // NOTE: `phone` is intentionally NOT returned from this endpoint. It's
+    // the owner's personal cell and should never ride a client-side API
+    // response. The admin UI only needs to know whether a phone exists —
+    // that's the `has_phone` boolean below.
+    type OrgRow = { id: string; name: string; slug: string; locale: string | null; phone: string | null };
+    const shape = (o: OrgRow) => ({
+      id: o.id,
+      name: o.name,
+      slug: o.slug,
+      locale: o.locale ?? 'en',
+      has_phone: Boolean(o.phone && o.phone.trim().length > 0),
+    });
+
     if (!currentUser?.super_admin) {
       // Regular user — just return their own org
       const { data: org } = await supabase
@@ -34,7 +47,7 @@ export default async (req: Request) => {
         .eq("id", auth.org_id)
         .single();
 
-      return jsonResponse({ orgs: org ? [org] : [] });
+      return jsonResponse({ orgs: org ? [shape(org as OrgRow)] : [] });
     }
 
     // Super admin — return all orgs
@@ -48,7 +61,7 @@ export default async (req: Request) => {
       return jsonResponse({ error: "Failed to load organizations" }, 500);
     }
 
-    return jsonResponse({ orgs: orgs ?? [] });
+    return jsonResponse({ orgs: (orgs ?? []).map(shape as (o: OrgRow) => unknown) });
   } catch {
     return jsonResponse({ error: "Something went wrong" }, 500);
   }
