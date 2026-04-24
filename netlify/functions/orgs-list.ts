@@ -30,7 +30,7 @@ export default async (req: Request) => {
       // Regular user — just return their own org
       const { data: org } = await supabase
         .from("organizations")
-        .select("id, name, slug")
+        .select("id, name, slug, locale, phone")
         .eq("id", auth.org_id)
         .single();
 
@@ -40,7 +40,7 @@ export default async (req: Request) => {
     // Super admin — return all orgs
     const { data: orgs, error } = await supabase
       .from("organizations")
-      .select("id, name, slug")
+      .select("id, name, slug, locale, phone")
       .eq("active", true)
       .order("name");
 

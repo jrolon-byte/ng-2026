@@ -10,6 +10,16 @@ function defaultExpiresAt(): string {
   return firstOfNext.toISOString().slice(0, 16); // yyyy-MM-ddTHH:mm for <input type="datetime-local">
 }
 
+// Default SMS body tailored to the org's locale. The admin can edit before
+// sending, so this is just a starting point — not a fixed template.
+function defaultSmsFor(org: Org | undefined, extraTexts: number): string {
+  const locale = org?.locale ?? 'en';
+  if (locale === 'es') {
+    return `Hola — te agregamos ${extraTexts.toLocaleString()} mensajes extra en NotifyGrid este mes, por la casa. Ábrelo cuando quieras 🌱 — James`;
+  }
+  return `Hey — we added ${extraTexts.toLocaleString()} bonus texts to your NotifyGrid this month, on us. Open the app to see it 🌱 — James`;
+}
+
 export default function AdminGiftManager() {
   const [orgs, setOrgs] = useState<Org[]>([]);
   const [activeGifts, setActiveGifts] = useState<ActiveGift[]>([]);
@@ -19,10 +29,32 @@ export default function AdminGiftManager() {
   const [extraTexts, setExtraTexts] = useState(274);
   const [expiresAt, setExpiresAt] = useState(defaultExpiresAt());
   const [note, setNote] = useState('A little extra this month — on us. Just because.');
+  const [sendSms, setSendSms] = useState(true);
+  const [smsMessage, setSmsMessage] = useState('');
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [warning, setWarning] = useState('');
   const [successFor, setSuccessFor] = useState<string | null>(null);
+
+  const selectedOrg = orgs.find(o => o.id === orgId);
+  const hasPhone = Boolean(selectedOrg?.phone && selectedOrg.phone.trim().length > 0);
+
+  // Re-template the SMS text when the admin picks a different customer or
+  // changes the gift amount. Preserves their manual edits: if they've typed
+  // anything that doesn't match a prior template, we leave it alone.
+  useEffect(() => {
+    const current = smsMessage;
+    const enPrev = defaultSmsFor({ ...selectedOrg, locale: 'en' } as Org, extraTexts);
+    const esPrev = defaultSmsFor({ ...selectedOrg, locale: 'es' } as Org, extraTexts);
+    const isPristine = current === '' || current === enPrev || current === esPrev
+      // Also treat prior-amount templates as pristine so extra-texts bumps flow through
+      || current.startsWith('Hey — we added ') || current.startsWith('Hola — te agregamos ');
+    if (isPristine) {
+      setSmsMessage(defaultSmsFor(selectedOrg, extraTexts));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgId, extraTexts]);
 
   const fetchAll = async () => {
     try {
@@ -47,17 +79,21 @@ export default function AdminGiftManager() {
     }
     setSaving(true);
     setError('');
+    setWarning('');
     try {
-      await setOrgBonus({
+      const result = await setOrgBonus({
         org_id: orgId,
         extra_texts: extraTexts,
         expires_at: new Date(expiresAt).toISOString(),
         note: note.trim() || null,
+        send_sms: sendSms && hasPhone,
+        sms_message: sendSms ? smsMessage : '',
       });
       const orgName = orgs.find(o => o.id === orgId)?.name ?? 'org';
       setSuccessFor(orgName);
+      if (result.sms_warning) setWarning(result.sms_warning);
       await fetchAll();
-      setTimeout(() => setSuccessFor(null), 4000);
+      setTimeout(() => setSuccessFor(null), 6000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to grant gift');
     } finally {
@@ -116,7 +152,7 @@ export default function AdminGiftManager() {
           </label>
         </div>
         <label className="gift-field gift-field--full">
-          <span>Message they'll see</span>
+          <span>Message they'll see in the app</span>
           <textarea
             rows={2}
             value={note}
@@ -124,7 +160,39 @@ export default function AdminGiftManager() {
             placeholder="A little extra this month — on us."
           />
         </label>
+
+        <label className="gift-sms-toggle">
+          <input
+            type="checkbox"
+            checked={sendSms}
+            onChange={(e) => setSendSms(e.target.checked)}
+          />
+          <span>Also text the owner to nudge them</span>
+          {sendSms && !hasPhone && (
+            <em className="gift-sms-warn">
+              This org has no phone on file — SMS will be skipped.
+            </em>
+          )}
+        </label>
+
+        {sendSms && hasPhone && (
+          <label className="gift-field gift-field--full">
+            <span>SMS text (sent to {selectedOrg?.phone})</span>
+            <textarea
+              rows={3}
+              value={smsMessage}
+              onChange={(e) => setSmsMessage(e.target.value)}
+              placeholder="Hey — we added bonus texts to your account."
+            />
+            <small className="gift-sms-hint">
+              {smsMessage.length} chars · {smsMessage.length <= 160 ? '1 segment' : `${Math.ceil(smsMessage.length / 153)} segments`}
+              {/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(smsMessage) && ' · emoji forces UCS-2 (~70 chars/segment)'}
+            </small>
+          </label>
+        )}
+
         {error && <div className="gift-error">{error}</div>}
+        {warning && <div className="gift-warning">{warning}</div>}
         {successFor && (
           <div className="gift-success">
             Gift sent to <strong>{successFor}</strong> — it shows in their chip on next page load.
@@ -135,7 +203,7 @@ export default function AdminGiftManager() {
           className="gift-submit"
           disabled={saving}
         >
-          {saving ? 'Sending…' : 'Send gift'}
+          {saving ? 'Sending…' : sendSms && hasPhone ? 'Send gift + text' : 'Send gift'}
         </button>
       </form>
 

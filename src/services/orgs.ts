@@ -15,6 +15,8 @@ export interface Org {
   id: string;
   name: string;
   slug: string;
+  locale?: string;
+  phone?: string | null;
 }
 
 export async function getOrgs(): Promise<Org[]> {

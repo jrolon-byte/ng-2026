@@ -26,12 +26,19 @@ export async function listActiveGifts(): Promise<ActiveGift[]> {
   return data.gifts ?? [];
 }
 
+export interface SetBonusResult {
+  success: true;
+  sms_warning: string | null;
+}
+
 export async function setOrgBonus(params: {
   org_id: string;
   extra_texts: number;
   expires_at: string | null;
   note: string | null;
-}): Promise<void> {
+  send_sms?: boolean;
+  sms_message?: string;
+}): Promise<SetBonusResult> {
   const res = await fetch(`${BASE_URL}/admin-set-bonus`, {
     method: 'POST',
     headers: getHeaders(),
@@ -41,4 +48,5 @@ export async function setOrgBonus(params: {
     const err = await res.json().catch(() => ({ error: 'Failed to update gift' }));
     throw new Error(err.error || 'Failed to update gift');
   }
+  return res.json();
 }
