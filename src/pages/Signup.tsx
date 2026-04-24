@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { formatPhoneInput } from '../utils/formatPhoneInput';
 import { BASE_URL } from '../config/api';
 import Loader from '../components/Loader';
-import ngLogo from '../imgs/ng.png';
 
 export default function Signup() {
   const [businessName, setBusinessName] = useState('');
@@ -13,7 +12,7 @@ export default function Signup() {
   const [phone, setPhone] = useState('');
   const [showLoader, setShowLoader] = useState(false);
 
-  const onSubmit = (e: React.FormEvent) => {
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!businessName || !name || !username || !password || !phone) {
       alert('Please fill in all fields');
@@ -23,10 +22,6 @@ export default function Signup() {
       alert('Username must be at least 3 characters');
       return;
     }
-    doSignup();
-  };
-
-  const doSignup = async () => {
     setShowLoader(true);
     try {
       const res = await fetch(`${BASE_URL}/stripe-checkout`, {
@@ -51,90 +46,154 @@ export default function Signup() {
   };
 
   return (
-    <div>
-      {/* Mini navbar with logo + live business name */}
-      <nav className="signup-nav">
-        <div className="signup-nav-inner">
-          <div className="signup-nav-brand">
-            <img src={ngLogo} alt="NotifyGrid" style={{ height: 32 }} />
-            {businessName && (
-              <span className="signup-nav-business">{businessName}</span>
-            )}
-          </div>
-          <Link to="/login" className="signup-nav-login">Log In</Link>
+    <div className="ng-auth">
+      <header className="ng-auth-topbar">
+        <div className="ng-auth-topbar-inner">
+          <a className="ng-auth-logo" href="https://notifygrid.com/">
+            <span className="ng-auth-logo-mark" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none">
+                <path d="M5 19V5h2.5l9 10V5H19v14h-2.5l-9-10v10H5z" fill="white" />
+                <circle cx="19" cy="6" r="3" fill="white" />
+              </svg>
+            </span>
+            NotifyGrid
+          </a>
+          {businessName && (
+            <span className="ng-auth-shop-pill" aria-live="polite">
+              {businessName}
+            </span>
+          )}
+          <Link to="/login" className="ng-auth-back">
+            Log in
+          </Link>
         </div>
-      </nav>
+      </header>
 
-      <div className="signup-page">
-        <div className="signup-card">
-          <h2 className="center">Get Started</h2>
-          <p className="center" style={{ color: '#888', marginBottom: 24, fontSize: 15 }}>
-            Send your first text to all your customers for <strong style={{ color: '#3399ff' }}>$5</strong>
-          </p>
-          <form className="add-form">
-            <div className="form-control">
-              <input
-                type="text"
-                placeholder="Business Name"
-                value={businessName}
-                onChange={(e) => setBusinessName(e.target.value)}
-                required
-              />
-            </div>
-            <div className="form-control">
-              <input
-                type="text"
-                placeholder="Your Name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-              />
-            </div>
-            <div className="form-control">
-              <input
-                type="text"
-                placeholder="Username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-              />
-            </div>
-            <div className="form-control">
-              <input
-                type="password"
-                placeholder="Password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </div>
-            <div className="form-control">
-              <input
-                type="tel"
-                placeholder="Phone Number"
-                value={phone}
-                onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
-                maxLength={14}
-                required
-              />
-            </div>
-            {showLoader ? (
-              <Loader />
-            ) : (
-              <button
-                onClick={onSubmit}
-                className="btn btn-blue"
-                style={{ color: 'white', background: '#3399ff' }}
-              >
-                Continue to Payment →
-              </button>
-            )}
-          </form>
-          <p className="center" style={{ marginTop: 20, fontSize: 13, color: '#999' }}>
-            Already have an account? <Link to="/login" style={{ color: '#3399ff' }}>Log in</Link>
+      <main className="ng-auth-main">
+        <div>
+          <div className="ng-auth-card ng-auth-card-wide">
+            <span className="ng-auth-eyebrow">
+              <span className="ng-dot" aria-hidden="true"></span>
+              First Blast · $5
+            </span>
+
+            <h1 className="ng-auth-title">
+              Start your <em>first blast.</em>
+            </h1>
+            <p className="ng-auth-sub">
+              100 texts to unlimited contacts. One payment of <strong>$5</strong> — no
+              auto-renew, no contract.
+            </p>
+
+            <form className="ng-auth-form" onSubmit={onSubmit}>
+              <div className="ng-auth-field">
+                <label className="ng-auth-label" htmlFor="ng-biz">
+                  Business name
+                </label>
+                <input
+                  id="ng-biz"
+                  className="ng-auth-input"
+                  type="text"
+                  placeholder="Tony Touch Barbershop"
+                  value={businessName}
+                  onChange={(e) => setBusinessName(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="ng-auth-field">
+                <label className="ng-auth-label" htmlFor="ng-name">
+                  Your name
+                </label>
+                <input
+                  id="ng-name"
+                  className="ng-auth-input"
+                  type="text"
+                  placeholder="Tony Rivera"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="ng-auth-row">
+                <div className="ng-auth-field">
+                  <label className="ng-auth-label" htmlFor="ng-user">
+                    Username
+                  </label>
+                  <input
+                    id="ng-user"
+                    className="ng-auth-input"
+                    type="text"
+                    placeholder="tonytouch"
+                    autoComplete="username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="ng-auth-field">
+                  <label className="ng-auth-label" htmlFor="ng-pass">
+                    Password
+                  </label>
+                  <input
+                    id="ng-pass"
+                    className="ng-auth-input"
+                    type="password"
+                    placeholder="••••••••"
+                    autoComplete="new-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="ng-auth-field">
+                <label className="ng-auth-label" htmlFor="ng-phone">
+                  Shop phone
+                </label>
+                <input
+                  id="ng-phone"
+                  className="ng-auth-input"
+                  type="tel"
+                  placeholder="(407) 555-0134"
+                  value={phone}
+                  onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
+                  maxLength={14}
+                  required
+                />
+              </div>
+
+              {showLoader ? (
+                <div className="ng-auth-loader">
+                  <Loader />
+                </div>
+              ) : (
+                <button type="submit" className="ng-auth-submit">
+                  Continue to payment
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                    <path d="M5 12h14m-6-6 6 6-6 6" />
+                  </svg>
+                </button>
+              )}
+
+              <p className="ng-auth-fineprint">
+                Secure checkout by Stripe. Cancel anytime before your first blast.
+              </p>
+            </form>
+
+            <p className="ng-auth-meta">
+              Already have an account? <Link to="/login">Log in</Link>
+            </p>
+          </div>
+
+          <p className="ng-auth-trust">
+            ★ <strong>9 YEARS</strong> SERVING LOCAL SHOPS · BUILT IN KISSIMMEE, FL ★
           </p>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

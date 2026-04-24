@@ -66,7 +66,7 @@ export default async (req: Request) => {
               phone: metadata.phone,
               plan_status: "first_blast",
               stripe_customer_id: session.customer as string,
-              text_limit: 500,
+              text_limit: 100,
             })
             .select("id")
             .single();
@@ -96,7 +96,12 @@ export default async (req: Request) => {
         // Upgrade flow – metadata contains org_id
         if (metadata.org_id) {
           const plan = metadata.plan;
-          const textLimit = plan === "pro" ? 1500 : 600;
+          const PLAN_TEXT_LIMITS: Record<string, number> = {
+            starter: 600,
+            pro: 1500,
+            enterprise: 4000,
+          };
+          const textLimit = PLAN_TEXT_LIMITS[plan] ?? 600;
 
           const { error: updateError } = await supabase
             .from("organizations")

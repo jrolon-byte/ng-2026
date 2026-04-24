@@ -66,22 +66,34 @@ export default async (req: Request) => {
 
       const { plan } = body;
 
-      if (!plan || !["starter", "pro"].includes(plan)) {
-        return jsonResponse({ error: "Invalid plan. Must be 'starter' or 'pro'" }, 400);
+      const PLAN_CATALOG: Record<string, { name: string; unit_amount: number }> = {
+        starter: { name: "NotifyGrid Starter – 600 texts/mo", unit_amount: 2900 },
+        pro: { name: "NotifyGrid Pro – 1,500 texts/mo", unit_amount: 4900 },
+        enterprise: { name: "NotifyGrid Enterprise – 4,000 texts/mo", unit_amount: 14900 },
+      };
+
+      if (!plan || !(plan in PLAN_CATALOG)) {
+        return jsonResponse(
+          { error: "Invalid plan. Must be 'starter', 'pro', or 'enterprise'" },
+          400
+        );
       }
 
-      const priceId =
-        plan === "starter"
-          ? process.env.STRIPE_PRICE_STARTER
-          : process.env.STRIPE_PRICE_PRO;
-
-      if (!priceId) {
-        return jsonResponse({ error: "Stripe price not configured for this plan" }, 500);
-      }
+      const tier = PLAN_CATALOG[plan];
 
       const session = await stripe.checkout.sessions.create({
         mode: "subscription",
-        line_items: [{ price: priceId, quantity: 1 }],
+        line_items: [
+          {
+            price_data: {
+              currency: "usd",
+              product_data: { name: tier.name },
+              unit_amount: tier.unit_amount,
+              recurring: { interval: "month" },
+            },
+            quantity: 1,
+          },
+        ],
         metadata: {
           org_id: auth.org_id,
           plan,
