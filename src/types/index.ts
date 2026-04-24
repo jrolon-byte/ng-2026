@@ -72,6 +72,12 @@ export interface AdminStats {
   total_orgs: number;
 }
 
+export interface BonusGift {
+  extra_texts: number;
+  expires_at: string;
+  note: string;
+}
+
 export interface DashboardStats {
   sms_this_month: number;
   sms_lifetime: number;
@@ -80,6 +86,10 @@ export interface DashboardStats {
   text_limit: number;
   grace_limit: number;
   reset_date: string;
+  /** Active per-org one-time bonus, or null if none. Auto-clears after expires_at. */
+  bonus: BonusGift | null;
+  /** Paywall locale for this org. Defaults 'en'. Currently only 'en' | 'es' supported. */
+  locale: string;
   admin?: AdminStats;
 }
 

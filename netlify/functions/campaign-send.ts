@@ -72,14 +72,24 @@ export default async (req: Request) => {
         .lt("sent_at", monthEnd),
       supabase
         .from("organizations")
-        .select("text_limit")
+        .select("text_limit, bonus_extra_texts, bonus_expires_at")
         .eq("id", auth.org_id)
         .single(),
     ]);
 
     const textsUsed = usageResult.count ?? 0;
     const textLimit = orgResult.data?.text_limit ?? 600;
-    const graceLimit = textLimit + (contacts.length * 2);
+    const standardGrace = textLimit + (contacts.length * 2);
+
+    // Per-org one-time bonus — mirrors dashboard-stats.ts. Only applied while
+    // bonus_expires_at is in the future.
+    const bonusExtra = orgResult.data?.bonus_extra_texts ?? 0;
+    const bonusExpiresAt = orgResult.data?.bonus_expires_at as string | null;
+    const bonusActive = bonusExtra > 0
+      && bonusExpiresAt != null
+      && new Date(bonusExpiresAt) > new Date();
+
+    const graceLimit = standardGrace + (bonusActive ? bonusExtra : 0);
 
     if (textsUsed + contacts.length > graceLimit) {
       return jsonResponse({

@@ -4,6 +4,7 @@ import { getStats } from '../services/dashboard';
 import type { DashboardStats } from '../types';
 import Layout from '../components/Layout';
 import Loader from '../components/Loader';
+import AdminGiftManager from '../components/AdminGiftManager';
 import { MdTextsms, MdAllInclusive, MdPeople, MdCampaign } from 'react-icons/md';
 
 export default function Dashboard() {
@@ -126,6 +127,9 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      {/* Super Admin — Gift manager */}
+      {admin && <AdminGiftManager />}
     </Layout>
   );
 }

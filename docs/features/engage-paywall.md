@@ -49,6 +49,76 @@ When a blast would exceed `grace_limit` (`isHardLocked` in `Engage.tsx`), the Se
 
 The server still enforces `grace_limit` in `campaign-send.ts` — the client-side sheet is UX, not security.
 
+## Per-org one-time bonus ("gift the customer")
+
+Three columns on `organizations` let us grant a time-limited gift of extra texts to a specific org, with a warm message shown in the UI until the expiry timestamp passes.
+
+| Column | Type | Purpose |
+|---|---|---|
+| `bonus_extra_texts` | `INTEGER NOT NULL DEFAULT 0` | Texts added on top of `standardGrace = text_limit + (active_contacts × 2)` |
+| `bonus_expires_at` | `TIMESTAMPTZ NULL` | When the bonus stops being applied. No cron — backend just checks `> now()` on every read. |
+| `bonus_note` | `TEXT NULL` | Warm message shown above the usage chip while active. Copy lives in the DB so James can personalize without a code change. |
+
+Migration: `supabase/migrations/012_bonus_fields.sql`.
+
+**Grace math (both `dashboard-stats.ts` and `campaign-send.ts`):**
+
+```
+grace_limit =
+    text_limit
+  + (active_contacts × 2)                    // standard growth bonus
+  + (bonus_active ? bonus_extra_texts : 0)   // per-org gift, time-limited
+```
+
+Where `bonus_active = bonus_extra_texts > 0 && bonus_expires_at > now()`.
+
+**UI surfacing:**
+
+- `dashboard-stats.ts` includes `bonus: { extra_texts, expires_at, note } | null` in the response. Null when inactive.
+- `PlanUsage.tsx` renders `<BonusBanner>` above the usage chip whenever `usage.bonus` is non-null. Banner copy: `note` on top line, `+{extra_texts} texts · until {date}` below.
+- Banner styling (`.plan-gift` in `index.css`) is warm amber/cream with a 🎁 — visually distinct from the chip's blue/amber/red status palette so it reads as "a gift" rather than a status indicator.
+
+**Granting a bonus** (the "script"):
+
+```sql
+UPDATE organizations
+SET bonus_extra_texts = 274,
+    bonus_expires_at  = '2026-05-01 00:00:00+00',
+    bonus_note        = 'A little extra this month, Tony — 274 more on us. Just because.'
+WHERE id = '<org-uuid>';
+```
+
+No cleanup required. When `bonus_expires_at` passes, the grace math stops applying the bonus and the banner disappears on next refresh.
+
+**What we explicitly did not build:**
+- Admin UI for granting bonuses. One SQL update is fine until there are more than a handful of customers.
+- Audit log of who granted what when.
+- Bonus history across cycles.
+
+## Locale (paywall-scoped i18n)
+
+Paywall surface supports EN and Dominican-register ES today. Everything else in the app is still English.
+
+**Schema:** `organizations.locale TEXT NOT NULL DEFAULT 'en'` (migration `013_org_locale.sql`). Currently supported values: `'en'`, `'es'`. Unknown values fall through to English.
+
+**Data flow:** `dashboard-stats.ts` returns `locale` on the stats response. `PlanUsage.tsx` reads `usage.locale` at the top of the component, resolves a `PaywallCopy` object via `getCopy(locale)` from `src/i18n/paywall.ts`, then every chip/banner/sheet string is a function call into that dictionary. No React context, no hook, no runtime dependency — just a pure lookup.
+
+**Adding a locale:** add a new object in `src/i18n/paywall.ts` with the same `PaywallCopy` shape, extend `getCopy()`. Zero schema change.
+
+**Emphasis markers:** strings in the dictionary use `**text**` to mark bold segments. `PlanUsage.tsx` has a tiny `boldify()` helper that splits on those markers and wraps in `<strong>`. This lets the dictionary express emphasis declaratively without templating JSX into the strings file.
+
+**Dates:** `formatResetDate(iso, locale, 'short'|'long')` in `paywall.ts` routes to `Intl.DateTimeFormat` with `en-US` or `es-DO`. Keeps date formatting consistent with locale.
+
+**What's NOT translated yet:**
+- Engage page chrome outside the paywall (Send Mass Text button, Add Customer, character counter, Message Preview, etc.)
+- Dashboard, Campaigns, Signup, Login
+- Admin gift manager
+- Alert() fallbacks (error.message surfaces the server's English)
+- Server-side error messages (`campaign-send.ts` returns English)
+- The landing page — stays English per the separate marketing strategy
+
+If/when the full app goes bilingual, the same `getCopy`/dictionary pattern extends cleanly; just add more top-level keys alongside `bonus`, `chip`, `sheet`.
+
 ## First-blast users
 
 Users with `plan_status === 'first_blast'` see `UpgradePrompt` instead of `PlanUsage`. That's their own journey — post-trial with a single $5 payment behind them — and the conversion narrative is different.

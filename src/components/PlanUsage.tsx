@@ -3,6 +3,16 @@ import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { BASE_URL } from '../config/api';
 import type { DashboardStats } from '../types';
+import { getCopy, formatResetDate, type PaywallCopy } from '../i18n/paywall';
+
+// Renders **bold** segments inside a string as <strong>. Lets our i18n
+// dictionary mark emphasis without templating JSX into the strings file.
+function boldify(input: string): React.ReactNode {
+  const parts = input.split(/\*\*(.+?)\*\*/g);
+  return parts.map((part, i) =>
+    i % 2 === 1 ? <strong key={i}>{part}</strong> : part
+  );
+}
 
 interface PlanUsageProps {
   usage: DashboardStats;
@@ -23,31 +33,15 @@ interface PlanDetail {
   key: 'pro' | 'enterprise';
   name: string;
   price: string;
-  priceUnit: string;
   textLimit: number;
-  tagline: string;
-  features: string[];
 }
 
+// Plan name, price, and texts/month live in code because they're tied to
+// stripe-checkout.ts (PLAN_CATALOG) and must stay in sync with billing.
+// Translatable text — tagline, features, CTAs — lives in i18n/paywall.ts.
 const PLAN_DETAILS: Record<'pro' | 'enterprise', PlanDetail> = {
-  pro: {
-    key: 'pro',
-    name: 'Pro',
-    price: '$49',
-    priceUnit: '/mo',
-    textLimit: 1500,
-    tagline: 'Reach everyone, every week',
-    features: ['1,500 sends per month', 'Delivery reports', 'Unlimited customers'],
-  },
-  enterprise: {
-    key: 'enterprise',
-    name: 'Enterprise',
-    price: '$149',
-    priceUnit: '/mo',
-    textLimit: 4000,
-    tagline: 'For when you\'re doing it big',
-    features: ['4,000 sends per month', 'Priority support', 'Unlimited customers'],
-  },
+  pro:        { key: 'pro',        name: 'Pro',        price: '$49',  textLimit: 1500 },
+  enterprise: { key: 'enterprise', name: 'Enterprise', price: '$149', textLimit: 4000 },
 };
 
 function getUpgradeOptions(currentLimit: number): PlanDetail[] {
@@ -66,9 +60,12 @@ export default function PlanUsage({ usage, open, onOpenChange }: PlanUsageProps)
   const { token } = useAuth();
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
 
+  const locale = usage.locale ?? 'en';
+  const copy = getCopy(locale);
+
   const sent = usage.sms_this_month;
   const cap = usage.text_limit;
-  const bonus = usage.grace_limit - usage.text_limit;
+  const bonusAmount = usage.grace_limit - usage.text_limit;
   const total = usage.grace_limit;
   const left = Math.max(0, total - sent);
   const contacts = usage.total_contacts;
@@ -77,14 +74,8 @@ export default function PlanUsage({ usage, open, onOpenChange }: PlanUsageProps)
   const upgradeOptions = getUpgradeOptions(cap);
   const primaryUpgrade = upgradeOptions[0];
 
-  const resetLabel = new Date(usage.reset_date).toLocaleDateString('en-US', {
-    month: 'long',
-    day: 'numeric',
-  });
-  const resetShort = new Date(usage.reset_date).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-  });
+  const resetLabel = formatResetDate(usage.reset_date, locale, 'long');
+  const resetShort = formatResetDate(usage.reset_date, locale, 'short');
 
   // Force-open at 'over' so the user isn't stuck in a silent dead-end.
   // Never auto-open at 'near' — respect agency, let them choose.
@@ -112,33 +103,30 @@ export default function PlanUsage({ usage, open, onOpenChange }: PlanUsageProps)
     }
   };
 
-  // ── Chip copy per state (our voice)
   const chipTitle = {
-    soft: `${sent.toLocaleString()} of ${total.toLocaleString()} sent this cycle`,
-    near: `You're in your growth bonus 🌱`,
-    over: `You've reached everyone this cycle 🎉`,
+    soft: copy.chip.softTitle(sent, total),
+    near: copy.chip.nearTitle,
+    over: copy.chip.overTitle,
   }[state];
 
   const chipSub = {
-    soft: `${currentPlanName} plan · resets ${resetShort}`,
-    near: `${left.toLocaleString()} text${left === 1 ? '' : 's'} left on us · resets ${resetShort}`,
-    over: `Everything refreshes ${resetShort}`,
+    soft: copy.chip.softSub(currentPlanName, resetShort),
+    near: copy.chip.nearSub(left, resetShort),
+    over: copy.chip.overSub(resetShort),
   }[state];
 
   const canDismiss = state !== 'over';
   const canUpgrade = upgradeOptions.length > 0;
 
-  // Sheet content bits (only rendered when primaryUpgrade exists)
-  const sheetHeadline = state === 'over'
-    ? "You've reached everyone this cycle."
-    : 'Your reach is outgrowing your plan.';
-
+  const sheetHeadline = state === 'over' ? copy.sheet.headlineOver : copy.sheet.headlineNear;
   const sheetSub = state === 'over'
-    ? `You've sent ${sent.toLocaleString()} messages to your ${contacts} customers — your full ${currentPlanName} plan plus every bonus text we added (2 per customer, on us). Let's give you more room to keep showing up.`
-    : `You've sent ${sent.toLocaleString()} messages this cycle — past your ${currentPlanName} plan (${cap.toLocaleString()}) and into the ${bonus.toLocaleString()} texts we added for you. Upgrading gives you real room to breathe.`;
+    ? copy.sheet.subOver({ sent, plan: currentPlanName, contacts })
+    : copy.sheet.subNear({ sent, plan: currentPlanName, cap, bonus: bonusAmount });
 
   return (
     <>
+      {usage.bonus && <BonusBanner bonus={usage.bonus} locale={locale} copy={copy} />}
+
       <ChipView
         state={state}
         title={chipTitle}
@@ -148,6 +136,7 @@ export default function PlanUsage({ usage, open, onOpenChange }: PlanUsageProps)
         total={total}
         canUpgrade={canUpgrade}
         onOpen={() => onOpenChange(true)}
+        cta={copy.chip.cta}
       />
 
       {open && primaryUpgrade && createPortal(
@@ -166,10 +155,37 @@ export default function PlanUsage({ usage, open, onOpenChange }: PlanUsageProps)
           canDismiss={canDismiss}
           onDismiss={() => canDismiss && onOpenChange(false)}
           onUpgrade={handleUpgrade}
+          copy={copy}
         />,
         document.body,
       )}
     </>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+//  Bonus banner — shown above the chip when an active gift exists.
+//  Copy comes from the DB (bonus_note) so James can personalize without
+//  a code change. Auto-disappears when bonus_expires_at passes because
+//  the backend stops sending the `bonus` field in that state.
+// ══════════════════════════════════════════════════════════════
+
+interface BonusBannerProps {
+  bonus: { extra_texts: number; expires_at: string; note: string };
+  locale: string;
+  copy: PaywallCopy;
+}
+
+function BonusBanner({ bonus, locale, copy }: BonusBannerProps) {
+  const until = formatResetDate(bonus.expires_at, locale, 'long');
+  return (
+    <div className="plan-gift" role="note">
+      <span className="plan-gift-emoji" aria-hidden>🎁</span>
+      <div className="plan-gift-body">
+        <div className="plan-gift-note">{bonus.note}</div>
+        <div className="plan-gift-meta">{copy.bonus.meta(bonus.extra_texts, until)}</div>
+      </div>
+    </div>
   );
 }
 
@@ -186,9 +202,10 @@ interface ChipViewProps {
   total: number;
   canUpgrade: boolean;
   onOpen: () => void;
+  cta: string;
 }
 
-function ChipView({ state, title, sub, sent, cap, total, canUpgrade, onOpen }: ChipViewProps) {
+function ChipView({ state, title, sub, sent, cap, total, canUpgrade, onOpen, cta }: ChipViewProps) {
   return (
     <div className={`plan-chip plan-chip--${state}`}>
       <div className="plan-chip-body">
@@ -202,7 +219,7 @@ function ChipView({ state, title, sub, sent, cap, total, canUpgrade, onOpen }: C
           className="plan-chip-cta"
           onClick={onOpen}
         >
-          View options
+          {cta}
         </button>
       )}
     </div>
@@ -262,13 +279,13 @@ interface SheetViewProps {
   canDismiss: boolean;
   onDismiss: () => void;
   onUpgrade: (plan: 'pro' | 'enterprise') => void;
+  copy: PaywallCopy;
 }
 
 function SheetView({
   state,
   sent,
   cap,
-  currentPlanName,
   contacts,
   resetLabel,
   primaryUpgrade,
@@ -279,10 +296,11 @@ function SheetView({
   canDismiss,
   onDismiss,
   onUpgrade,
+  copy,
 }: SheetViewProps) {
-  const multiplier = cap > 0 ? (primaryUpgrade.textLimit / cap).toFixed(primaryUpgrade.textLimit / cap % 1 === 0 ? 0 : 1) : '—';
+  const multRaw = cap > 0 ? primaryUpgrade.textLimit / cap : 0;
+  const multiplier = cap > 0 ? multRaw.toFixed(multRaw % 1 === 0 ? 0 : 1) : '—';
   const timesReach = contacts > 0 ? Math.floor(primaryUpgrade.textLimit / contacts) : 0;
-  const impactNextPct = Math.min(100, (primaryUpgrade.textLimit / primaryUpgrade.textLimit) * 100);
   const impactCurrentPct = (cap / primaryUpgrade.textLimit) * 100;
 
   return (
@@ -301,7 +319,7 @@ function SheetView({
               className="plan-sheet-dismiss"
               onClick={onDismiss}
             >
-              Maybe later
+              {copy.sheet.dismiss}
             </button>
           )}
 
@@ -316,22 +334,18 @@ function SheetView({
           <div className="plan-impact">
             <div className="plan-impact-grid">
               <div>
-                <div className="plan-impact-label">Your reach today</div>
+                <div className="plan-impact-label">{copy.sheet.impactLabelToday}</div>
                 <div className="plan-impact-value">{sent.toLocaleString()}</div>
               </div>
               <div>
-                <div className="plan-impact-label">With {primaryUpgrade.name}</div>
+                <div className="plan-impact-label">{copy.sheet.impactLabelWith(primaryUpgrade.name)}</div>
                 <div className="plan-impact-value plan-impact-value--blue">
                   {primaryUpgrade.textLimit.toLocaleString()}
-                  <span className="plan-impact-unit">{primaryUpgrade.priceUnit}</span>
+                  <span className="plan-impact-unit">{copy.sheet.unit}</span>
                 </div>
               </div>
             </div>
             <div className="plan-impact-scale">
-              <div className="plan-impact-scale-labels">
-                <span>{currentPlanName} · {cap.toLocaleString()}</span>
-                <span>{primaryUpgrade.name} · {primaryUpgrade.textLimit.toLocaleString()}</span>
-              </div>
               <div className="plan-impact-scale-track">
                 <div
                   className="plan-impact-scale-current"
@@ -339,11 +353,16 @@ function SheetView({
                 />
                 <div
                   className="plan-impact-scale-next"
-                  style={{ width: `${impactNextPct}%` }}
+                  style={{ width: '100%' }}
                 />
               </div>
               <div className="plan-impact-note">
-                That's <strong>{multiplier}×</strong> your reach — enough to text every one of your {contacts} customers <strong>{timesReach} {timesReach === 1 ? 'time' : 'times'}</strong> before everything refreshes {resetLabel}.
+                {boldify(copy.sheet.impactNote({
+                  mult: multiplier,
+                  contacts,
+                  times: timesReach,
+                  date: resetLabel,
+                }))}
               </div>
             </div>
           </div>
@@ -358,17 +377,17 @@ function SheetView({
                   key={plan.key}
                   className={`plan-card ${isHero ? 'plan-card--hero' : ''}`}
                 >
-                  {isHero && <div className="plan-card-badge">RECOMMENDED</div>}
+                  {isHero && <div className="plan-card-badge">{copy.sheet.recommended}</div>}
                   <div className="plan-card-head">
                     <span className="plan-card-name">{plan.name}</span>
                     <span className="plan-card-price">
-                      {plan.price}<span className="plan-card-unit">{plan.priceUnit}</span>
+                      {plan.price}<span className="plan-card-unit">{copy.sheet.unit}</span>
                     </span>
                   </div>
-                  <div className="plan-card-texts">{plan.textLimit.toLocaleString()} texts/month</div>
-                  <div className="plan-card-tagline">{plan.tagline}</div>
+                  <div className="plan-card-texts">{copy.sheet.textsPerMonth(plan.textLimit)}</div>
+                  <div className="plan-card-tagline">{copy.sheet.tagline[plan.key]}</div>
                   <ul className="plan-card-features">
-                    {plan.features.map((f) => (
+                    {copy.sheet.features[plan.key].map((f) => (
                       <li key={f}>
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
                           <path d="M5 13l4 4L19 7" />
@@ -383,7 +402,7 @@ function SheetView({
                     onClick={() => onUpgrade(plan.key)}
                     disabled={loadingPlan !== null}
                   >
-                    {isLoading ? 'Redirecting…' : `Upgrade to ${plan.name} →`}
+                    {isLoading ? copy.sheet.redirecting : copy.sheet.cardCta(plan.name)}
                   </button>
                 </div>
               );
@@ -402,11 +421,11 @@ function SheetView({
             disabled={loadingPlan !== null}
           >
             {loadingPlan === primaryUpgrade.key
-              ? 'Redirecting…'
-              : `Upgrade to ${primaryUpgrade.name} · ${primaryUpgrade.price}${primaryUpgrade.priceUnit} →`}
+              ? copy.sheet.redirecting
+              : copy.sheet.primaryCta(primaryUpgrade.name, primaryUpgrade.price, copy.sheet.unit)}
           </button>
           <div className="plan-sheet-fineprint">
-            Change anytime. We'll always have your back.
+            {copy.sheet.fineprint}
           </div>
         </div>
       </div>

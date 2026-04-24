@@ -50,7 +50,7 @@ export default async (req: Request) => {
 
         supabase
           .from("organizations")
-          .select("text_limit")
+          .select("text_limit, bonus_extra_texts, bonus_expires_at, bonus_note, locale")
           .eq("id", auth.org_id)
           .single(),
 
@@ -64,7 +64,19 @@ export default async (req: Request) => {
     const textLimit = orgData.data?.text_limit ?? 600;
     const textsUsed = smsThisMonth.count ?? 0;
     const activeContacts = contactsCount.count ?? 0;
-    const graceLimit = textLimit + (activeContacts * 2);
+    const standardGrace = textLimit + (activeContacts * 2);
+
+    // Per-org one-time bonus — only active while bonus_expires_at is in the future.
+    // When it expires the grace naturally drops back to the standard formula;
+    // no cron/cleanup job needed.
+    const bonusExtra = orgData.data?.bonus_extra_texts ?? 0;
+    const bonusExpiresAt = orgData.data?.bonus_expires_at as string | null;
+    const bonusNote = (orgData.data?.bonus_note as string | null) ?? null;
+    const bonusActive = bonusExtra > 0
+      && bonusExpiresAt != null
+      && new Date(bonusExpiresAt) > now;
+
+    const graceLimit = standardGrace + (bonusActive ? bonusExtra : 0);
     const isSuperAdmin = userData.data?.super_admin === true;
 
     const response: Record<string, unknown> = {
@@ -75,6 +87,10 @@ export default async (req: Request) => {
       text_limit: textLimit,
       grace_limit: graceLimit,
       reset_date: resetDate.toISOString(),
+      bonus: bonusActive && bonusNote
+        ? { extra_texts: bonusExtra, expires_at: bonusExpiresAt, note: bonusNote }
+        : null,
+      locale: (orgData.data?.locale as string | null) ?? 'en',
     };
 
     // Super admin gets global cost data across ALL orgs
