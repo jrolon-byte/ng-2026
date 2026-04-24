@@ -83,7 +83,7 @@ export default async (req: Request) => {
 
     if (textsUsed + contacts.length > graceLimit) {
       return jsonResponse({
-        error: "Monthly text limit reached. Contact your administrator to upgrade your plan.",
+        error: "You've reached everyone this cycle — upgrade to keep going, or wait for the next refresh.",
       }, 403);
     }
 

@@ -11,6 +11,7 @@ import { formatPhoneInput } from '../utils/formatPhoneInput';
 import TopNav from '../components/TopNav';
 import Loader from '../components/Loader';
 import UpgradePrompt from '../components/UpgradePrompt';
+import PlanUsage from '../components/PlanUsage';
 import { FaTrashAlt } from 'react-icons/fa';
 
 export default function Engage() {
@@ -38,6 +39,10 @@ export default function Engage() {
   const [editPrefix, setEditPrefix] = useState('');
   const [editSuffix, setEditSuffix] = useState('');
   const [savingSettings, setSavingSettings] = useState(false);
+
+  // Upgrade sheet (paywall) open state — controlled so the locked send
+  // button can trigger it without duplicating the upgrade UI.
+  const [planSheetOpen, setPlanSheetOpen] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -103,9 +108,6 @@ export default function Engage() {
   const isHardLocked = usage
     ? usage.sms_this_month + customerList.length > usage.grace_limit
     : false;
-  const isOverLimit = usage
-    ? usage.sms_this_month >= usage.text_limit
-    : false;
   const isFirstBlastUsed = orgSettings?.plan_status === 'first_blast'
     && usage && usage.sms_this_month > 0;
 
@@ -123,7 +125,7 @@ export default function Engage() {
       return;
     }
     if (isHardLocked) {
-      alert('Monthly text limit reached. Contact your administrator to upgrade your plan.');
+      setPlanSheetOpen(true);
       return;
     }
     setSending(true);
@@ -133,8 +135,16 @@ export default function Engage() {
       setMessage('');
       setShowNoMessage(false);
       fetchUsage(); // refresh usage bar
-    } catch {
-      alert('Failed to send messages. Please try again.');
+    } catch (err) {
+      const serverMsg = err instanceof Error ? err.message : '';
+      // If the server says we're past the allowance (stale usage data in the
+      // client), open the upgrade sheet rather than dropping into a dead-end alert.
+      if (serverMsg.toLowerCase().includes('upgrade') || serverMsg.toLowerCase().includes('reached everyone')) {
+        setPlanSheetOpen(true);
+        fetchUsage();
+      } else {
+        alert(serverMsg || 'Something went wrong. Please try again.');
+      }
     } finally {
       setSending(false);
     }
@@ -238,35 +248,19 @@ export default function Engage() {
         </div>
       )}
 
-      {/* Usage Bar — only shows in grace period or locked */}
-      {usage && !loading && isOverLimit && (
+      {/* Plan usage — always visible from day 1 of the cycle so users see
+          their reach as it grows. First-blast trial users get UpgradePrompt
+          instead; that's a different journey. */}
+      {usage && !loading && !isFirstBlastUsed && (
         <div className="contain">
-          <div className={`usage-bar ${isHardLocked ? 'usage-bar--locked' : 'usage-bar--warning'}`}>
-            <div className="usage-bar-header">
-              <span className="usage-bar-label">
-                {usage.sms_this_month.toLocaleString()} / {usage.text_limit.toLocaleString()} texts
-              </span>
-              <span className="usage-bar-reset">
-                Resets {new Date(usage.reset_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-              </span>
-            </div>
-            <div className="usage-bar-track">
-              <div
-                className="usage-bar-fill"
-                style={{ width: '100%' }}
-              />
-            </div>
-            {!isHardLocked && (
-              <p className="usage-bar-msg">You've exceeded your plan. Upgrade to avoid interruption.</p>
-            )}
-            {isHardLocked && (
-              <p className="usage-bar-msg">Limit reached. Contact James to upgrade your plan.</p>
-            )}
-          </div>
+          <PlanUsage
+            usage={usage}
+            open={planSheetOpen}
+            onOpenChange={setPlanSheetOpen}
+          />
         </div>
       )}
 
-      {/* Upgrade prompt for first_blast users */}
       {isFirstBlastUsed && (
         <div className="contain">
           <UpgradePrompt />
@@ -392,12 +386,19 @@ export default function Engage() {
             <Loader />
           ) : (
             <button
-              onClick={onSendMessage}
+              onClick={(e) => {
+                if (isHardLocked) {
+                  e.preventDefault();
+                  setPlanSheetOpen(true);
+                  return;
+                }
+                onSendMessage(e);
+              }}
               className="btn btn-blue"
-              style={{ color: 'white', background: isHardLocked ? '#ccc' : '#3399ff' }}
-              disabled={isHardLocked || customerList.length === 0}
+              style={{ color: 'white', background: '#3399ff' }}
+              disabled={customerList.length === 0}
             >
-              {isHardLocked ? 'Limit Reached' : 'Send Mass Text 📲'}
+              Send Mass Text 📲
             </button>
           )}
         </form>

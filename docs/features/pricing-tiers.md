@@ -44,9 +44,13 @@ Cost per SMS is `$0.011` total (Twilio $0.0079 + carrier $0.003) — see `netlif
 
 Enterprise is a flat $149 with no "contact sales" escape — decision in chat 2026-04-18. Multi-location operators whose usage exceeds 4,000/mo would need per-location orgs or a custom arrangement outside the checkout flow.
 
-## Grace limit
+## Grace limit (a.k.a. "growth bonus")
 
-`dashboard-stats.ts` returns `grace_limit = text_limit + (active_contacts × 2)`. This is a soft buffer the app uses to avoid cutting off a legitimate single-blast that slightly exceeds the monthly cap. It is intentionally invisible — do not surface it in marketing copy or the UI. Users should see the hard limit.
+`dashboard-stats.ts` returns `grace_limit = text_limit + (active_contacts × 2)`. This is a soft buffer on top of the plan — 2 extra texts per active customer.
+
+**Surfacing decision reversed 2026-04-24.** The prior intent was to keep the grace invisible. The current intent is to **surface it as a visible gift** — a "growth bonus" the user sees, framed as "2 extra per customer, on us." Rationale: the value of letting a user exceed their plan is lost if they can't see it. Making it visible turns silent mercy into explicit care — and trains users (who were previously on effectively unlimited sending) to understand their real allowance.
+
+The UI surface for this is the Engage paywall — see `engage-paywall.md`. Any copy change to how the grace is described should also update that component and the app's campaign-send error message.
 
 ## Existing data considerations
 
