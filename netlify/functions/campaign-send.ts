@@ -36,9 +36,18 @@ export default async (req: Request) => {
     // Fetch org settings for message prefix/suffix
     const { data: orgSettings } = await supabase
       .from("organizations")
-      .select("message_prefix, message_suffix")
+      .select("message_prefix, message_suffix, active")
       .eq("id", auth.org_id)
       .single();
+
+    // Deactivated company — a still-valid JWT must not be able to blast.
+    // Login is also blocked; this covers sessions issued before deactivation.
+    if (orgSettings && orgSettings.active === false) {
+      return jsonResponse(
+        { error: "This account has been deactivated. Contact NotifyGrid support." },
+        403
+      );
+    }
 
     const prefix = orgSettings?.message_prefix ?? "";
     const suffix = orgSettings?.message_suffix ?? "";

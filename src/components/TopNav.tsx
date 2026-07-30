@@ -76,6 +76,11 @@ export default function TopNav() {
             Campaigns
           </NavLink>
           {showSwitcher && (
+            <NavLink to="/admin/companies" className={({ isActive }) => isActive ? 'topnav-link topnav-link--active' : 'topnav-link'}>
+              Companies
+            </NavLink>
+          )}
+          {showSwitcher && (
             <select
               className="topnav-org-select"
               value={user?.org_id ?? ''}
@@ -103,6 +108,11 @@ export default function TopNav() {
         <NavLink to="/campaigns" className={({ isActive }) => isActive ? 'mobile-menu-link mobile-menu-link--active' : 'mobile-menu-link'} onClick={closeMenu}>
           Campaigns
         </NavLink>
+        {showSwitcher && (
+          <NavLink to="/admin/companies" className={({ isActive }) => isActive ? 'mobile-menu-link mobile-menu-link--active' : 'mobile-menu-link'} onClick={closeMenu}>
+            Companies
+          </NavLink>
+        )}
         {showSwitcher && (
           <div className="mobile-menu-link" style={{ padding: '10px 0' }}>
             <select

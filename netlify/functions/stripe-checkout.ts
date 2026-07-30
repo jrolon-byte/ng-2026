@@ -81,8 +81,19 @@ export default async (req: Request) => {
 
       const tier = PLAN_CATALOG[plan];
 
+      // Reuse the org's existing Stripe customer so an upgrade doesn't mint a
+      // second customer record. The webhook cancels the previous subscription
+      // once the new one completes — see stripe-webhook.ts.
+      const supabase = getSupabase();
+      const { data: org } = await supabase
+        .from("organizations")
+        .select("stripe_customer_id")
+        .eq("id", auth.org_id)
+        .single();
+
       const session = await stripe.checkout.sessions.create({
         mode: "subscription",
+        ...(org?.stripe_customer_id ? { customer: org.stripe_customer_id } : {}),
         line_items: [
           {
             price_data: {

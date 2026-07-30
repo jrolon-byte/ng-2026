@@ -7,6 +7,7 @@ import SignupSuccess from './pages/SignupSuccess';
 import Engage from './pages/Engage';
 import Dashboard from './pages/Dashboard';
 import CampaignHistory from './pages/CampaignHistory';
+import AdminCompanies from './pages/AdminCompanies';
 
 export default function App() {
   return (
@@ -37,6 +38,16 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <CampaignHistory />
+              </ProtectedRoute>
+            }
+          />
+          {/* Super-admin only — the page redirects non-admins to /engage;
+              the API enforces the real 403. */}
+          <Route
+            path="/admin/companies"
+            element={
+              <ProtectedRoute>
+                <AdminCompanies />
               </ProtectedRoute>
             }
           />

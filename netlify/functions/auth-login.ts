@@ -64,6 +64,21 @@ export default async (req: Request) => {
       return jsonResponse({ error: "Invalid credentials" }, 401);
     }
 
+    // Deactivated company — block sign-in outright. Not a credentials
+    // failure, so it isn't rate-limit logged and the message is honest.
+    const { data: userOrg } = await supabase
+      .from("organizations")
+      .select("active")
+      .eq("id", user.org_id)
+      .single();
+
+    if (userOrg && userOrg.active === false) {
+      return jsonResponse(
+        { error: "This account has been deactivated. Contact NotifyGrid support." },
+        403
+      );
+    }
+
     // --- Verify password ---
     let passwordValid = false;
     if (user.password_hash.startsWith("$2")) {

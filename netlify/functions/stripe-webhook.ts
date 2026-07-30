@@ -102,12 +102,22 @@ export default async (req: Request) => {
             enterprise: 4000,
           };
           const textLimit = PLAN_TEXT_LIMITS[plan] ?? 600;
+          const newSubscriptionId = session.subscription as string;
+
+          // Capture the previous subscription BEFORE overwriting — an upgrade
+          // replaces it, and leaving it live means double-billing.
+          const { data: existingOrg } = await supabase
+            .from("organizations")
+            .select("stripe_subscription_id")
+            .eq("id", metadata.org_id)
+            .single();
+          const previousSubscriptionId = existingOrg?.stripe_subscription_id;
 
           const { error: updateError } = await supabase
             .from("organizations")
             .update({
               plan_status: "active",
-              stripe_subscription_id: session.subscription as string,
+              stripe_subscription_id: newSubscriptionId,
               text_limit: textLimit,
             })
             .eq("id", metadata.org_id);
@@ -115,6 +125,25 @@ export default async (req: Request) => {
           if (updateError) {
             console.error("Failed to update organization:", updateError);
             return jsonResponse({ error: "Failed to update organization" }, 500);
+          }
+
+          // Cancel the replaced subscription. Safe ordering: the org already
+          // points at the new id, so the resulting customer.subscription.deleted
+          // event (matched by subscription id) won't touch this org. Failure is
+          // logged, not fatal — the upgrade itself succeeded; a stray old sub
+          // is a Stripe-dashboard cleanup, not a broken customer.
+          if (previousSubscriptionId && previousSubscriptionId !== newSubscriptionId) {
+            try {
+              await stripe.subscriptions.cancel(previousSubscriptionId);
+              console.log(
+                `Cancelled replaced subscription ${previousSubscriptionId} for org ${metadata.org_id}`
+              );
+            } catch (cancelErr) {
+              console.error(
+                `Upgrade succeeded but cancelling old subscription ${previousSubscriptionId} failed:`,
+                cancelErr
+              );
+            }
           }
         }
 
