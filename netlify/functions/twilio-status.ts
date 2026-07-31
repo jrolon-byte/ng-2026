@@ -1,6 +1,6 @@
 import twilio from "twilio";
 import { getSupabase } from "./utils/supabase";
-import { siteBaseUrl } from "./utils/twilio-numbers";
+import { siteBaseUrl, webhookUrlCandidates } from "./utils/twilio-numbers";
 
 /**
  * Twilio delivery-status callback — the missing half of the send loop.
@@ -51,9 +51,12 @@ export default async (req: Request) => {
   }
 
   const signature = req.headers.get("X-Twilio-Signature");
-  const url = statusCallbackUrl();
+  const candidates = webhookUrlCandidates(req, "twilio-status");
 
-  if (!signature || !url || !twilio.validateRequest(authToken, signature, url, params)) {
+  if (
+    !signature ||
+    !candidates.some((url) => twilio.validateRequest(authToken, signature, url, params))
+  ) {
     // Unsigned callers could mark a shop's whole list undeliverable.
     console.error("twilio-status: signature validation FAILED — rejecting");
     return new Response("Forbidden", { status: 403 });

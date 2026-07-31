@@ -18,6 +18,35 @@ export function siteBaseUrl(): string | null {
 }
 
 /**
+ * Candidate URLs a Twilio webhook signature might have been computed over.
+ *
+ * Twilio hashes the exact URL it was configured to call. If the number points
+ * at the custom domain but Netlify's `URL` env resolves to the
+ * `*.netlify.app` alias (or vice versa), validation fails on every single
+ * message — silently, since we must still answer 2xx. Rather than depend on
+ * the two agreeing, check the URL Twilio actually hit as well.
+ *
+ * This isn't a weakening: every candidate is one of our own endpoints, and
+ * the signature still has to be valid for one of them.
+ */
+export function webhookUrlCandidates(req: Request, functionName: string): string[] {
+  const candidates: string[] = [];
+
+  // What Twilio actually requested, as seen by the function.
+  try {
+    const url = new URL(req.url);
+    candidates.push(`${url.origin}${url.pathname}`);
+  } catch {
+    // Ignore — fall through to the configured base below.
+  }
+
+  const base = siteBaseUrl();
+  if (base) candidates.push(`${base}/.netlify/functions/${functionName}`);
+
+  return [...new Set(candidates)];
+}
+
+/**
  * The webhook Twilio POSTs to on inbound SMS.
  *
  * Signature validation hashes this exact string, so provisioning and

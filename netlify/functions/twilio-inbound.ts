@@ -1,7 +1,7 @@
 import twilio from "twilio";
 import { getSupabase } from "./utils/supabase";
 import { normalizePhone } from "./utils/phone";
-import { inboundWebhookUrl } from "./utils/twilio-numbers";
+import { webhookUrlCandidates } from "./utils/twilio-numbers";
 
 /**
  * Twilio inbound-SMS webhook — a customer replying to a shop's blast.
@@ -62,17 +62,20 @@ export default async (req: Request) => {
   // Without this, anyone who discovers the URL can inject fabricated replies —
   // including forged STOPs that would silently opt a shop's customers out.
   const signature = req.headers.get("X-Twilio-Signature");
-  // Must be the exact URL Twilio hashed, i.e. the one set as `smsUrl` at
-  // provisioning time — derived from the same helper so the two can't drift.
-  const url = inboundWebhookUrl();
+  // The signature is computed over the exact URL Twilio was configured with,
+  // so check both what it actually hit and what we think our address is —
+  // a custom-domain/netlify.app mismatch would otherwise 403 every message.
+  const candidates = webhookUrlCandidates(req, "twilio-inbound");
 
-  if (!signature || !url) {
+  if (!signature || candidates.length === 0) {
     console.error("twilio-inbound: missing signature or site URL — rejecting");
     return new Response("Forbidden", { status: 403 });
   }
 
-  if (!twilio.validateRequest(authToken, signature, url, params)) {
-    console.error("twilio-inbound: signature validation FAILED — rejecting");
+  if (!candidates.some((url) => twilio.validateRequest(authToken, signature, url, params))) {
+    console.error(
+      `twilio-inbound: signature validation FAILED against [${candidates.join(", ")}] — rejecting`
+    );
     return new Response("Forbidden", { status: 403 });
   }
 
