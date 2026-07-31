@@ -3,14 +3,22 @@ import { corsResponse, jsonResponse } from "./utils/cors";
 import { authenticateRequest } from "./utils/auth";
 
 /**
- * The full conversation with one customer — what the shop sent, and what the
- * customer said back — merged into one chronological thread.
+ * The conversation with one customer.
  *
- * Outbound alone is useful: `message_logs` has carried `contact_id` and `body`
- * since the first schema, so this endpoint returns real history the day it
- * ships, before a single reply exists.
+ * NOT the full message log. A contact who's been on the list for two years has
+ * ~28 near-identical broadcasts and, if you're lucky, one reply — and dumping
+ * all of it buries the only line that matters. So this returns the
+ * conversation: the blast that prompted them, and everything from there on.
+ *
+ * `?mark_read=1` clears the unread flag on their replies, which is what makes
+ * the "new" badge in the customer list disappear once you've actually read it.
  */
 
+/** Broadcasts to show before the first reply, for context. */
+const LEAD_IN = 2;
+/** What to show when they've never replied — just the recent sends. */
+const NO_REPLY_TAIL = 5;
+/** Hard ceiling regardless. */
 const MAX_MESSAGES = 200;
 
 interface ThreadMessage {
@@ -32,17 +40,19 @@ export default async (req: Request) => {
   if (auth instanceof Response) return auth;
 
   try {
-    const contactId = new URL(req.url).searchParams.get("contact_id");
+    const url = new URL(req.url);
+    const contactId = url.searchParams.get("contact_id");
+    const markRead = url.searchParams.get("mark_read") === "1";
+
     if (!contactId) {
       return jsonResponse({ error: "contact_id query param is required" }, 400);
     }
 
     const supabase = getSupabase();
 
-    // The id arrives straight from the query string, so confirm it belongs to
-    // the caller's org BEFORE reading any message rows. Without this the
-    // endpoint would hand any authenticated user another tenant's
-    // conversations by guessing a uuid.
+    // The id comes straight off the query string, so confirm it belongs to the
+    // caller's org BEFORE reading any messages. Without this, any signed-in
+    // user could read another tenant's conversations by guessing a uuid.
     const { data: contact } = await supabase
       .from("contacts")
       .select("id")
@@ -89,14 +99,54 @@ export default async (req: Request) => {
       status: null,
     }));
 
-    // Take the most recent MAX_MESSAGES across BOTH directions, then hand the
-    // client oldest-first so it can render top-to-bottom without re-sorting.
-    const messages = [...outbound, ...inbound]
-      .sort((a, b) => time(b.created_at) - time(a.created_at))
-      .slice(0, MAX_MESSAGES)
-      .reverse();
+    const totalCount = outbound.length + inbound.length;
 
-    return jsonResponse({ messages });
+    // --- Window to the conversation ---
+    let kept: ThreadMessage[];
+
+    if (inbound.length > 0) {
+      // Anchor on their FIRST reply. Everything from there on is dialogue;
+      // before it is just broadcast history.
+      const firstReplyAt = Math.min(...inbound.map((m) => time(m.created_at)));
+
+      const before = outbound
+        .filter((m) => time(m.created_at) < firstReplyAt)
+        .sort((a, b) => time(b.created_at) - time(a.created_at))
+        .slice(0, LEAD_IN);
+
+      const after = outbound.filter((m) => time(m.created_at) >= firstReplyAt);
+
+      kept = [...before, ...after, ...inbound];
+    } else {
+      kept = outbound.slice(0, NO_REPLY_TAIL);
+    }
+
+    const messages = kept
+      .sort((a, b) => time(a.created_at) - time(b.created_at))
+      .slice(-MAX_MESSAGES);
+
+    // --- Mark their replies read ---
+    // A side effect on GET, but only when the client explicitly asks: opening
+    // the thread IS reading it, and a second round trip to say so would just
+    // be ceremony.
+    if (markRead && inbound.length > 0) {
+      const { error: readError } = await supabase
+        .from("inbound_messages")
+        .update({ read_at: new Date().toISOString() })
+        .eq("org_id", auth.org_id)
+        .eq("contact_id", contactId)
+        .is("read_at", null);
+
+      if (readError) {
+        console.error("contact-messages: mark-read failed", readError);
+      }
+    }
+
+    return jsonResponse({
+      messages,
+      /** Older broadcasts left out, so the client can say so honestly. */
+      omitted_count: Math.max(0, totalCount - messages.length),
+    });
   } catch (err) {
     console.error("contact-messages error:", err);
     return jsonResponse({ error: "Something went wrong" }, 500);
