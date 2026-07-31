@@ -184,6 +184,9 @@ export default function AdminCompanies() {
                       <td>
                         <div className="companies-name">{c.name}</div>
                         <div className="companies-slug">{c.slug}</div>
+                        {c.referred_by_name && (
+                          <div className="companies-referred">↳ referred by {c.referred_by_name}</div>
+                        )}
                       </td>
                       <td>{c.username ?? <span className="companies-dim">—</span>}</td>
                       <td>
@@ -195,6 +198,14 @@ export default function AdminCompanies() {
                           >
                             🎁
                           </span>
+                        )}
+                        {c.earning_referrals > 0 && (
+                          <div
+                            className="companies-referral-credit"
+                            title={`${c.earning_referrals} active referral(s) — $5/mo each`}
+                          >
+                            {c.earning_referrals} ref → −${c.earning_referrals * 5}/mo
+                          </div>
                         )}
                       </td>
                       <td>

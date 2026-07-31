@@ -7,11 +7,18 @@ export interface Organization {
   city: string;
   state: string;
   zip: string;
-  plan_tier: string;
+  /** first_blast | active | past_due | cancelled — the DB column is plan_status (plan_tier never existed). */
+  plan_status: string;
   active: boolean;
   created_at: string;
 }
 
+/**
+ * The auth user as the API actually returns it (auth-login / auth-refresh:
+ * JWT claims + username + last_name). `active`/`created_at` were phantom
+ * fields no auth response ever included. `username` is optional because
+ * orgs-switch re-mints the payload without it.
+ */
 export interface User {
   id: string;
   org_id: string;
@@ -19,8 +26,7 @@ export interface User {
   first_name: string;
   last_name: string;
   role: string;
-  active: boolean;
-  created_at: string;
+  username?: string;
 }
 
 export interface Contact {

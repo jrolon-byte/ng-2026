@@ -1,4 +1,5 @@
 import { BASE_URL } from '../config/api';
+import type { User } from '../types';
 
 function getHeaders(): HeadersInit {
   const token = sessionStorage.getItem('token');
@@ -70,7 +71,7 @@ export async function updateOrgSettings(data: {
   }
 }
 
-export async function switchOrg(orgId: string): Promise<{ token: string; user: Record<string, unknown>; org: Org }> {
+export async function switchOrg(orgId: string): Promise<{ token: string; user: User; org: Org }> {
   const response = await fetch(`${BASE_URL}/orgs-switch`, {
     method: 'POST',
     headers: getHeaders(),

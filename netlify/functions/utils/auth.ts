@@ -8,6 +8,14 @@ export interface JwtPayload {
   org_id: string;
   first_name: string;
   role: string;
+  /**
+   * Revocation hook: must match users.token_version at refresh time. Bump
+   * the DB column to invalidate all outstanding tokens for a user (they die
+   * at the next refresh; the access token itself expires within 7 days).
+   * Optional — tokens minted before this shipped don't carry it and refresh
+   * fine until their natural expiry.
+   */
+  token_version?: number;
 }
 
 const SALT_ROUNDS = 10;

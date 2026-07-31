@@ -5,6 +5,7 @@ import type { DashboardStats } from '../types';
 import Layout from '../components/Layout';
 import Loader from '../components/Loader';
 import AdminGiftManager from '../components/AdminGiftManager';
+import ReferralCard from '../components/ReferralCard';
 import { MdTextsms, MdAllInclusive, MdPeople, MdCampaign } from 'react-icons/md';
 
 export default function Dashboard() {
@@ -91,6 +92,9 @@ export default function Dashboard() {
           ))}
         </div>
       )}
+
+      {/* Refer & earn — every org */}
+      {stats && <ReferralCard />}
 
       {/* Super Admin — Cost Estimator */}
       {admin && (

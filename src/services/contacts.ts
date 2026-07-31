@@ -48,6 +48,33 @@ export async function createContact(data: {
   return result.contact;
 }
 
+export interface BulkCreateResult {
+  created: number;
+  merged: number;
+  reactivated: number;
+  invalid: { first_name: string; phone: string; reason: string }[];
+}
+
+export async function bulkCreateContacts(contacts: {
+  first_name: string;
+  last_name?: string;
+  phone: string;
+  email?: string;
+}[]): Promise<BulkCreateResult> {
+  const response = await fetch(`${BASE_URL}/contacts-bulk-create`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ contacts }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Failed to import contacts' }));
+    throw new Error(error.error || 'Failed to import contacts');
+  }
+
+  return response.json();
+}
+
 export async function deleteContact(contactId: string): Promise<void> {
   const response = await fetch(`${BASE_URL}/contacts-delete?contact_id=${contactId}`, {
     method: 'DELETE',

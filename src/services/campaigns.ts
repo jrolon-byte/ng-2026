@@ -12,10 +12,18 @@ function getHeaders(): HeadersInit {
   return headers;
 }
 
+/**
+ * Queue a campaign send. The server validates and returns immediately —
+ * the actual Twilio sending runs in a background worker. Poll
+ * getCampaignStatus() until status leaves queued/sending for the outcome.
+ * idempotency_key makes retries safe: the same key returns the existing
+ * campaign instead of blasting everyone twice.
+ */
 export async function sendCampaign(data: {
   body: string;
   image_url?: string;
-}): Promise<{ campaign_id: string; total_contacts: number; total_sent: number; total_failed: number }> {
+  idempotency_key: string;
+}): Promise<{ campaign_id: string; total_recipients: number; already_queued?: boolean }> {
   const response = await fetch(`${BASE_URL}/campaign-send`, {
     method: 'POST',
     headers: getHeaders(),
@@ -28,6 +36,29 @@ export async function sendCampaign(data: {
   }
 
   return response.json();
+}
+
+export interface CampaignStatus {
+  id: string;
+  status: 'queued' | 'sending' | 'completed' | 'failed' | string;
+  total_recipients: number;
+  total_delivered: number;
+  total_failed: number;
+}
+
+export async function getCampaignStatus(campaignId: string): Promise<CampaignStatus> {
+  const response = await fetch(
+    `${BASE_URL}/campaign-status?campaign_id=${encodeURIComponent(campaignId)}`,
+    { method: 'GET', headers: getHeaders() },
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Failed to check status' }));
+    throw new Error(error.error || 'Failed to check status');
+  }
+
+  const data = await response.json();
+  return data.campaign;
 }
 
 export async function getCampaigns(): Promise<Campaign[]> {

@@ -1,6 +1,8 @@
 import Stripe from "stripe";
 import { getSupabase } from "./utils/supabase";
 import { jsonResponse } from "./utils/cors";
+import { recalcDiscountForReferrerOf, recalcReferrerDiscount } from "./utils/referrals";
+import { alertAdmin } from "./utils/admin-alert";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2024-06-20",
@@ -55,7 +57,31 @@ export default async (req: Request) => {
 
         // Signup flow – metadata contains username
         if (metadata.username) {
+          // IDEMPOTENCY: Stripe delivers at-least-once. Without this check a
+          // redelivery re-ran the org insert (fresh random slug = no unique
+          // conflict) and then failed the user insert → 500 → more retries →
+          // one orphan org per attempt, each one inflating referral credit
+          // when the signup was referred. Username is the natural key: if the
+          // user exists, this session was already provisioned — ack and stop.
+          const { data: alreadyProvisioned } = await supabase
+            .from("users")
+            .select("id")
+            .eq("username", metadata.username)
+            .maybeSingle();
+
+          if (alreadyProvisioned) {
+            console.log(
+              `stripe-webhook: signup for "${metadata.username}" already provisioned — acking redelivery`
+            );
+            break;
+          }
+
           const slug = generateSlug(metadata.business_name);
+
+          // Referred signups checkout as a Pro SUBSCRIPTION (signup_plan
+          // metadata) — the org is born a paying subscriber. Standard
+          // signups are born on the $5 First Blast trial.
+          const isProSignup = metadata.signup_plan === "pro";
 
           // Create organization
           const { data: org, error: orgError } = await supabase
@@ -64,9 +90,16 @@ export default async (req: Request) => {
               name: metadata.business_name,
               slug,
               phone: metadata.phone,
-              plan_status: "first_blast",
+              plan_status: isProSignup ? "active" : "first_blast",
               stripe_customer_id: session.customer as string,
-              text_limit: 100,
+              text_limit: isProSignup ? 1500 : 100,
+              ...(isProSignup && session.subscription
+                ? { stripe_subscription_id: session.subscription as string }
+                : {}),
+              // Referral linkage (validated at checkout).
+              ...(metadata.referred_by_org_id
+                ? { referred_by_org_id: metadata.referred_by_org_id }
+                : {}),
             })
             .select("id")
             .single();
@@ -76,21 +109,44 @@ export default async (req: Request) => {
             return jsonResponse({ error: "Failed to create organization" }, 500);
           }
 
-          // Create user
+          // Create user. password_hash arrives pre-bcrypted from checkout
+          // (2026-07-30); metadata.password fallback covers checkout sessions
+          // minted before that deploy — those still lazy-upgrade on login.
           const { error: userError } = await supabase.from("users").insert({
             org_id: org.id,
             username: metadata.username,
             email: `${metadata.username}@notifygrid.app`,
-            password_hash: metadata.password, // plaintext, auto-upgrades on first login
+            password_hash: metadata.password_hash || metadata.password,
             first_name: metadata.first_name,
             last_name: metadata.last_name,
             role: "admin",
           });
 
           if (userError) {
-            console.error("Failed to create user:", userError);
+            // Roll the org back — a retry re-runs this whole branch cleanly,
+            // and an orphan org must never survive (referred orphans are born
+            // "active" and would count toward the referrer's discount).
+            await supabase.from("organizations").delete().eq("id", org.id);
+            console.error("Failed to create user (org rolled back):", userError);
             return jsonResponse({ error: "Failed to create user" }, 500);
           }
+
+          // A referred Pro signup is EARNING from day one — apply the
+          // referrer's $5 immediately, no upgrade step needed.
+          if (isProSignup && metadata.referred_by_org_id) {
+            await recalcReferrerDiscount(supabase, stripe, metadata.referred_by_org_id);
+          }
+
+          // Number provisioning is MANUAL at current volume — buying a Twilio
+          // number is ~$1.15/mo forever, and signups are rare enough that
+          // automating the spend isn't worth it. So: text James instead.
+          // Until he provisions one, the shop sends from the shared number
+          // and can't receive replies. `ensureOrgNumber` in
+          // utils/twilio-numbers.ts does the work when he's ready.
+          await alertAdmin(
+            `NotifyGrid: new signup — ${metadata.business_name} (${slug}). ` +
+              `Set up a Twilio number to enable replies. Org ${org.id}`
+          );
         }
 
         // Upgrade flow – metadata contains org_id
@@ -119,6 +175,13 @@ export default async (req: Request) => {
               plan_status: "active",
               stripe_subscription_id: newSubscriptionId,
               text_limit: textLimit,
+              // First Blast is mode:"payment" and doesn't always create a
+              // Stripe customer, so orgs can reach their first upgrade with a
+              // null customer id — and invoice.paid / payment_failed key off
+              // it. The subscription checkout always has one; capture it.
+              ...(session.customer
+                ? { stripe_customer_id: session.customer as string }
+                : {}),
             })
             .eq("id", metadata.org_id);
 
@@ -133,18 +196,100 @@ export default async (req: Request) => {
           // logged, not fatal — the upgrade itself succeeded; a stray old sub
           // is a Stripe-dashboard cleanup, not a broken customer.
           if (previousSubscriptionId && previousSubscriptionId !== newSubscriptionId) {
+            // Proration: the upgrade charged a full first invoice while the
+            // old plan's paid period still had time on it. Compute the unused
+            // fraction BEFORE cancelling and grant it as a customer-balance
+            // credit — it auto-applies to the next invoice. Best-effort:
+            // failure logs loudly but never blocks the upgrade.
+            // (Field access is defensive: pinned API 2024-06-20 carries
+            // current_period_* on the subscription; newer API shapes moved
+            // them to the item.)
+            let prorationCredit = 0;
             try {
-              await stripe.subscriptions.cancel(previousSubscriptionId);
+              const prevSub = (await stripe.subscriptions.retrieve(
+                previousSubscriptionId
+              )) as unknown as {
+                status: string;
+                current_period_start?: number;
+                current_period_end?: number;
+                items: { data: Array<{ price?: { unit_amount?: number | null }; current_period_start?: number; current_period_end?: number }> };
+              };
+              const item = prevSub.items?.data?.[0];
+              const unit = item?.price?.unit_amount ?? 0;
+              const start = prevSub.current_period_start ?? item?.current_period_start ?? 0;
+              const end = prevSub.current_period_end ?? item?.current_period_end ?? 0;
+              const nowS = Math.floor(Date.now() / 1000);
+              if (prevSub.status === "active" && unit > 0 && end > nowS && end > start) {
+                prorationCredit = Math.min(
+                  unit,
+                  Math.floor((unit * (end - nowS)) / (end - start))
+                );
+              }
+            } catch (prorationErr) {
+              console.error("Proration lookup failed (no credit granted):", prorationErr);
+            }
+
+            // Three attempts — a single failed cancel is PERMANENT double
+            // billing (the org already points at the new sub, so no retry
+            // path ever revisits this). "already canceled" from Stripe is
+            // success, not failure.
+            let cancelled = false;
+            for (let attempt = 0; attempt < 3 && !cancelled; attempt++) {
+              try {
+                await stripe.subscriptions.cancel(previousSubscriptionId);
+                cancelled = true;
+              } catch (cancelErr) {
+                const msg = cancelErr instanceof Error ? cancelErr.message : "";
+                if (/canceled/i.test(msg)) {
+                  cancelled = true;
+                  break;
+                }
+                console.error(
+                  `Cancel attempt ${attempt + 1} for replaced subscription ${previousSubscriptionId} failed:`,
+                  cancelErr
+                );
+                await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+              }
+            }
+            if (cancelled) {
               console.log(
                 `Cancelled replaced subscription ${previousSubscriptionId} for org ${metadata.org_id}`
               );
-            } catch (cancelErr) {
+              if (prorationCredit > 0 && session.customer) {
+                try {
+                  await stripe.customers.createBalanceTransaction(
+                    session.customer as string,
+                    {
+                      amount: -prorationCredit,
+                      currency: "usd",
+                      description: "Credit for unused time on your previous plan",
+                    }
+                  );
+                  console.log(
+                    `Granted $${(prorationCredit / 100).toFixed(2)} unused-time credit to org ${metadata.org_id}`
+                  );
+                } catch (creditErr) {
+                  console.error(
+                    `BILLING NOTE: org ${metadata.org_id} upgrade succeeded but the $${(prorationCredit / 100).toFixed(2)} proration credit failed — grant manually:`,
+                    creditErr
+                  );
+                }
+              }
+            } else {
               console.error(
-                `Upgrade succeeded but cancelling old subscription ${previousSubscriptionId} failed:`,
-                cancelErr
+                `BILLING ALERT: org ${metadata.org_id} is DOUBLE-SUBSCRIBED — cancel ${previousSubscriptionId} manually in the Stripe dashboard`
               );
             }
           }
+
+          // This org just became (or stayed) a paying subscriber — if someone
+          // referred them, the referrer's $5/referral discount kicks in now.
+          await recalcDiscountForReferrerOf(supabase, stripe, metadata.org_id);
+
+          // And if this org is itself a REFERRER, its credit was attached to
+          // the subscription we just replaced — reapply it to the new one, or
+          // a plan change would silently eat their referral discount.
+          await recalcReferrerDiscount(supabase, stripe, metadata.org_id);
         }
 
         break;
@@ -155,10 +300,15 @@ export default async (req: Request) => {
         const invoice = event.data.object as Stripe.Invoice;
         const customerId = invoice.customer as string;
 
+        // Only promote past_due→active (or refresh active). A stale retried
+        // invoice.paid arriving AFTER a cancellation must not resurrect a
+        // cancelled org — that would re-arm referral credit for a dead
+        // customer with nothing to ever turn it off again.
         const { error } = await supabase
           .from("organizations")
           .update({ plan_status: "active" })
-          .eq("stripe_customer_id", customerId);
+          .eq("stripe_customer_id", customerId)
+          .in("plan_status", ["active", "past_due"]);
 
         if (error) {
           console.error("Failed to update org on invoice.paid:", error);
@@ -187,6 +337,14 @@ export default async (req: Request) => {
         const subscription = event.data.object as Stripe.Subscription;
         const subscriptionId = subscription.id;
 
+        // Resolve the org BEFORE the update so the referrer recalc knows who
+        // cancelled — a cancelled referral's $5 comes off the referrer's bill.
+        const { data: cancelledOrg } = await supabase
+          .from("organizations")
+          .select("id")
+          .eq("stripe_subscription_id", subscriptionId)
+          .maybeSingle();
+
         const { error } = await supabase
           .from("organizations")
           .update({ plan_status: "cancelled", text_limit: 0 })
@@ -195,12 +353,84 @@ export default async (req: Request) => {
         if (error) {
           console.error("Failed to update org on subscription.deleted:", error);
         }
+
+        if (cancelledOrg) {
+          await recalcDiscountForReferrerOf(supabase, stripe, cancelledOrg.id);
+        }
+        break;
+      }
+
+      // ── Dispute opened – hostile signal, shut the org down ──
+      // A chargeback means the cardholder told their bank the charge is
+      // fraudulent. Deactivate (login + sending blocked, history kept),
+      // cancel their subscription, and drop them from any referrer's credit.
+      // Reactivation is one click on /admin/companies if it's a mistake.
+      case "charge.dispute.created": {
+        const dispute = event.data.object as Stripe.Dispute;
+        try {
+          const charge = await stripe.charges.retrieve(dispute.charge as string);
+          const customerId = charge.customer as string | null;
+          if (!customerId) break;
+
+          const { data: org } = await supabase
+            .from("organizations")
+            .select("id, name, stripe_subscription_id")
+            .eq("stripe_customer_id", customerId)
+            .maybeSingle();
+          if (!org) break;
+
+          await supabase
+            .from("organizations")
+            .update({ active: false })
+            .eq("id", org.id);
+
+          if (org.stripe_subscription_id) {
+            try {
+              await stripe.subscriptions.cancel(org.stripe_subscription_id);
+            } catch (cancelErr) {
+              console.error(
+                `Dispute shutdown: cancelling sub for ${org.name} failed:`,
+                cancelErr
+              );
+            }
+          }
+          await recalcDiscountForReferrerOf(supabase, stripe, org.id);
+          console.error(
+            `BILLING ALERT: dispute ${dispute.id} — org "${org.name}" deactivated and subscription cancelled. Review in Stripe.`
+          );
+        } catch (err) {
+          console.error("charge.dispute.created handling failed:", err);
+        }
+        break;
+      }
+
+      // ── Refund issued – surface it, don't auto-punish ──
+      // Refunds are often goodwill (James refunding a customer he wants to
+      // keep) — auto-killing the account would be wrong. Log loudly with the
+      // org name; deactivation is one click on /admin/companies if deserved.
+      case "charge.refunded": {
+        const charge = event.data.object as Stripe.Charge;
+        const customerId = charge.customer as string | null;
+        if (customerId) {
+          const { data: org } = await supabase
+            .from("organizations")
+            .select("name, plan_status")
+            .eq("stripe_customer_id", customerId)
+            .maybeSingle();
+          console.log(
+            `BILLING NOTE: refund of $${(charge.amount_refunded / 100).toFixed(2)} to "${org?.name ?? customerId}" (plan_status: ${org?.plan_status ?? "?"}) — account left untouched; deactivate via /admin/companies if warranted.`
+          );
+        }
         break;
       }
 
       default:
-        console.log(`Unhandled event type: ${event.type}`);
-        return jsonResponse({ received: false }, 400);
+        // MUST be 200: Stripe treats non-2xx as delivery failure and retries
+        // for days; sustained failures get the whole endpoint disabled —
+        // after which customers pay at checkout but no org is ever created.
+        // Unhandled event types are acknowledged, not errors.
+        console.log(`Unhandled event type: ${event.type} — acked`);
+        return jsonResponse({ received: true, unhandled: event.type }, 200);
     }
 
     return jsonResponse({ received: true }, 200);

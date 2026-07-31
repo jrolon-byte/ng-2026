@@ -42,14 +42,14 @@ export default async (req: Request) => {
     // --- Find user by username, fall back to email ---
     let { data: user, error } = await supabase
       .from("users")
-      .select("id, username, email, org_id, first_name, last_name, role, password_hash")
+      .select("id, username, email, org_id, first_name, last_name, role, password_hash, active, token_version")
       .eq("username", username)
       .single();
 
     if (error || !user) {
       const fallback = await supabase
         .from("users")
-        .select("id, username, email, org_id, first_name, last_name, role, password_hash")
+        .select("id, username, email, org_id, first_name, last_name, role, password_hash, active, token_version")
         .eq("email", username)
         .single();
       user = fallback.data;
@@ -62,6 +62,16 @@ export default async (req: Request) => {
         .from("login_attempts")
         .insert({ username: username.toLowerCase() });
       return jsonResponse({ error: "Invalid credentials" }, 401);
+    }
+
+    // Deactivated USER — auth-refresh already enforces this; login must too,
+    // or user-level deactivation is theater (just log in again for a fresh
+    // 7-day token).
+    if (user.active === false) {
+      return jsonResponse(
+        { error: "This account has been disabled. Contact your administrator." },
+        403
+      );
     }
 
     // Deactivated company — block sign-in outright. Not a credentials
@@ -115,6 +125,7 @@ export default async (req: Request) => {
       org_id: user.org_id,
       first_name: user.first_name,
       role: user.role,
+      token_version: user.token_version ?? 0,
     };
 
     const token = signToken(payload);

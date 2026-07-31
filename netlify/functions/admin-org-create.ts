@@ -155,6 +155,8 @@ export default async (req: Request) => {
     if (userError) {
       // Don't leave a loginless org behind — the org insert is the half we
       // can undo. users.org_id cascades, so this is a clean rollback.
+      // (Number provisioning happens *after* this point precisely so a failed
+      // rollback can't strand a number we're being billed for.)
       await supabase.from("organizations").delete().eq("id", org.id);
       console.error("admin-org-create: user insert failed:", userError);
       return jsonResponse({ error: "Failed to create user — nothing was saved" }, 500);
@@ -164,9 +166,21 @@ export default async (req: Request) => {
       `admin-org-create: "${business_name}" (${org.slug}) created by ${auth.email} — plan=${plan}, limit=${text_limit}`
     );
 
+    // No number is provisioned here. Unlike the Stripe signup path there's no
+    // alert either — James is the one running this form, so telling him what
+    // he just did is noise. The response carries the reminder instead.
     return jsonResponse({
       success: true,
-      org: { id: org.id, name: business_name, slug: org.slug, plan, text_limit },
+      org: {
+        id: org.id,
+        name: business_name,
+        slug: org.slug,
+        plan,
+        text_limit,
+        twilio_phone_number: null,
+      },
+      notice:
+        "Sends use the shared number. Provision a Twilio number for this org to enable customer replies.",
       user: { username: usernameRaw, email, first_name, last_name },
     });
   } catch (err) {

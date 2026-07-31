@@ -1,16 +1,26 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { formatPhoneInput } from '../utils/formatPhoneInput';
 import { BASE_URL } from '../config/api';
 import Loader from '../components/Loader';
 
 export default function Signup() {
+  // Referral links land here as /signup?ref=CODE — prefilled but editable.
+  const [searchParams] = useSearchParams();
   const [businessName, setBusinessName] = useState('');
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
+  const [referralCode, setReferralCode] = useState(
+    (searchParams.get('ref') ?? '').toUpperCase(),
+  );
   const [showLoader, setShowLoader] = useState(false);
+
+  // A referral code flips the offer: referred signups go straight to Pro
+  // ($49/mo subscription) instead of the $5 First Blast trial. Live on the
+  // code field so typing/clearing a code updates the terms shown.
+  const isReferral = referralCode.trim().length > 0;
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,6 +44,7 @@ export default function Signup() {
           username,
           password,
           phone,
+          ...(referralCode.trim() ? { referralCode: referralCode.trim() } : {}),
         }),
       });
       const data = await res.json();
@@ -74,15 +85,28 @@ export default function Signup() {
           <div className="ng-auth-card ng-auth-card-wide">
             <span className="ng-auth-eyebrow">
               <span className="ng-dot" aria-hidden="true"></span>
-              First Blast · $5
+              {isReferral ? 'Referral · Pro Plan' : 'First Blast · $5'}
             </span>
 
             <h1 className="ng-auth-title">
-              Start your <em>first blast.</em>
+              {isReferral ? (
+                <>Your friend <em>hooked you up.</em></>
+              ) : (
+                <>Start your <em>first blast.</em></>
+              )}
             </h1>
             <p className="ng-auth-sub">
-              100 texts to unlimited contacts. One payment of <strong>$5</strong> — no
-              auto-renew, no contract.
+              {isReferral ? (
+                <>
+                  Start on <strong>Pro</strong> — 1,500 texts every month for{' '}
+                  <strong>$49/mo</strong>. Cancel anytime.
+                </>
+              ) : (
+                <>
+                  100 texts to unlimited contacts. One payment of <strong>$5</strong> — no
+                  auto-renew, no contract.
+                </>
+              )}
             </p>
 
             <form className="ng-auth-form" onSubmit={onSubmit}>
@@ -166,6 +190,22 @@ export default function Signup() {
                 />
               </div>
 
+              <div className="ng-auth-field">
+                <label className="ng-auth-label" htmlFor="ng-ref">
+                  Referral code <span className="ng-auth-optional">(optional)</span>
+                </label>
+                <input
+                  id="ng-ref"
+                  className="ng-auth-input"
+                  type="text"
+                  placeholder="TONY-XXXX"
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  value={referralCode}
+                  onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+                />
+              </div>
+
               {showLoader ? (
                 <div className="ng-auth-loader">
                   <Loader />
@@ -180,7 +220,9 @@ export default function Signup() {
               )}
 
               <p className="ng-auth-fineprint">
-                Secure checkout by Stripe. Cancel anytime before your first blast.
+                {isReferral
+                  ? 'Secure checkout by Stripe. $49/mo subscription — cancel anytime.'
+                  : 'Secure checkout by Stripe. Cancel anytime before your first blast.'}
               </p>
             </form>
 

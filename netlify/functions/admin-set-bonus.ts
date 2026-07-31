@@ -75,13 +75,17 @@ export default async (req: Request) => {
           .single();
 
         const rawPhone = org?.phone ?? "";
-        const to = rawPhone ? normalizePhone(rawPhone) : null;
+        const phoneResult = rawPhone ? normalizePhone(rawPhone) : null;
+        const to = phoneResult && "e164" in phoneResult ? phoneResult.e164 : null;
 
         if (!to) {
           sms_warning = "Gift saved, but the org has no valid phone on file — SMS skipped.";
         } else {
           const accountSid = process.env.TWILIO_ACCOUNT_SID;
           const authToken  = process.env.TWILIO_AUTH_TOKEN;
+          // Deliberately the SHARED platform number, not the org's own.
+          // This is NotifyGrid telling a shop owner about a gift — sending it
+          // from their own number would look like they texted themselves.
           const fromNumber = process.env.TWILIO_PHONE_NUMBER;
 
           if (!accountSid || !authToken || !fromNumber) {

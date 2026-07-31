@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { getContacts, createContact, deleteContact } from '../services/contacts';
-import { sendCampaign } from '../services/campaigns';
+import { sendCampaign, getCampaignStatus } from '../services/campaigns';
 import { getStats } from '../services/dashboard';
 import { getOrgSettings, updateOrgSettings } from '../services/orgs';
 import type { Contact, DashboardStats } from '../types';
@@ -99,8 +99,10 @@ export default function Engage() {
       setMobileNum('');
       setShowAddCustomer(false);
       fetchCustomers();
-    } catch {
-      // silent
+    } catch (err) {
+      // A swallowed failure here looks identical to success (the sheet
+      // closes, no new row) — the user must see WHY: duplicate, bad phone…
+      alert(err instanceof Error ? err.message : 'Failed to add customer. Please try again.');
     }
   };
 
@@ -117,7 +119,12 @@ export default function Engage() {
   const maxChars = 160 - prefix.length - suffix.length;
   const fullPreview = prefix + (message || 'Your message here...') + suffix;
 
-  // Send message
+  // Send message — the server QUEUES the blast and a background worker
+  // delivers it (big lists take minutes; the old sync call died at ~50
+  // contacts). We poll for the outcome. The idempotency key survives retries
+  // of the same logical send, so a flaky network can't double-blast.
+  const sendKeyRef = useRef<string | null>(null);
+
   const onSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if ([0, 1, 2, 3, 4, 5].includes(message.length)) {
@@ -130,19 +137,54 @@ export default function Engage() {
     }
     setSending(true);
     try {
-      await sendCampaign({ body: message });
-      alert('Success! All Your clients have been outreached.');
+      if (!sendKeyRef.current) {
+        sendKeyRef.current = crypto.randomUUID();
+      }
+      const queued = await sendCampaign({
+        body: message,
+        idempotency_key: sendKeyRef.current,
+      });
+      // Accepted — this logical send is done from the client's perspective;
+      // a future send is a new key.
+      sendKeyRef.current = null;
       setMessage('');
       setShowNoMessage(false);
+
+      // Poll until the worker finishes (~2.5s cadence, up to 2 minutes).
+      const deadline = Date.now() + 120_000;
+      let final: Awaited<ReturnType<typeof getCampaignStatus>> | null = null;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 2500));
+        try {
+          const status = await getCampaignStatus(queued.campaign_id);
+          if (status.status !== 'queued' && status.status !== 'sending') {
+            final = status;
+            break;
+          }
+        } catch {
+          // transient poll failure — keep trying until the deadline
+        }
+      }
+
+      if (final && final.status === 'completed') {
+        alert(`Success! Your message went out to ${final.total_delivered} customer${final.total_delivered === 1 ? '' : 's'}.`);
+      } else if (final && final.status === 'failed') {
+        alert('The send failed — no messages could be delivered. Please try again or contact support.');
+      } else {
+        alert(`Your blast to ${queued.total_recipients} customers is still sending in the background — check Campaigns for the final count.`);
+      }
       fetchUsage(); // refresh usage bar
     } catch (err) {
       const serverMsg = err instanceof Error ? err.message : '';
       // If the server says we're past the allowance (stale usage data in the
       // client), open the upgrade sheet rather than dropping into a dead-end alert.
       if (serverMsg.toLowerCase().includes('upgrade') || serverMsg.toLowerCase().includes('reached everyone')) {
+        sendKeyRef.current = null; // rejected, not queued — next attempt is a new send
         setPlanSheetOpen(true);
         fetchUsage();
       } else {
+        // Network-level failure: keep the key so a retry of the SAME send
+        // can't double-blast if the first request actually landed.
         alert(serverMsg || 'Something went wrong. Please try again.');
       }
     } finally {
@@ -279,6 +321,11 @@ export default function Engage() {
               onChange={(e) => {
                 if (e.target.value.length <= maxChars) {
                   setMessage(e.target.value);
+                  // The idempotency key is bound to THIS text. Editing after
+                  // a failed attempt is a new logical send — without this, a
+                  // retry with the old key would return the old campaign and
+                  // silently drop the edited message.
+                  sendKeyRef.current = null;
                 }
                 if (showNoMessage) setShowNoMessage(false);
               }}

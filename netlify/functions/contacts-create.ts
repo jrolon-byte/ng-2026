@@ -23,26 +23,54 @@ export default async (req: Request) => {
       );
     }
 
-    const normalizedPhone = normalizePhone(phone);
-    if (!normalizedPhone) {
-      return jsonResponse({ error: "Invalid phone number" }, 400);
+    const phoneResult = normalizePhone(phone);
+    if ("error" in phoneResult) {
+      return jsonResponse({ error: `Invalid phone number: ${phoneResult.error}` }, 400);
     }
+    const normalizedPhone = phoneResult.e164;
 
     const supabase = getSupabase();
 
-    // Check for duplicate phone within the org
+    // Duplicate check within the org — MUST look at active too. Deletes are
+    // soft (active=false) and the list hides inactive rows, so a plain
+    // existence check makes a removed customer permanently unaddable: 409
+    // forever with no visible row. An inactive match is reactivated instead.
     const { data: existing } = await supabase
       .from("contacts")
-      .select("id")
+      .select("id, first_name, last_name, email, active")
       .eq("org_id", auth.org_id)
       .eq("phone", normalizedPhone)
-      .single();
+      .maybeSingle();
 
-    if (existing) {
+    if (existing && existing.active) {
       return jsonResponse(
         { error: "A contact with this phone number already exists" },
         409
       );
+    }
+
+    if (existing && !existing.active) {
+      // Reactivate — fill blanks only, never overwrite a stored name with
+      // the newly typed one (the DB name is the shop's history).
+      const { data: contact, error } = await supabase
+        .from("contacts")
+        .update({
+          active: true,
+          opted_in: true,
+          ...(existing.first_name ? {} : { first_name }),
+          ...(existing.last_name || !last_name ? {} : { last_name }),
+          ...(existing.email || !email ? {} : { email }),
+        })
+        .eq("id", existing.id)
+        .eq("org_id", auth.org_id)
+        .select()
+        .single();
+
+      if (error) {
+        return jsonResponse({ error: "Failed to re-add contact" }, 500);
+      }
+
+      return jsonResponse({ contact, reactivated: true }, 200);
     }
 
     const { data: contact, error } = await supabase

@@ -1,6 +1,8 @@
+import Stripe from "stripe";
 import { getSupabase } from "./utils/supabase";
 import { corsResponse, jsonResponse } from "./utils/cors";
 import { authenticateRequest } from "./utils/auth";
+import { recalcDiscountForReferrerOf } from "./utils/referrals";
 
 /**
  * Super admin: deactivate or reactivate a company. This is the "archive,
@@ -60,6 +62,42 @@ export default async (req: Request) => {
     if (error) {
       console.error("admin-org-set-active failed:", error);
       return jsonResponse({ error: "Failed to update company" }, 500);
+    }
+
+    if (process.env.STRIPE_SECRET_KEY) {
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+        apiVersion: "2024-06-20",
+      });
+
+      // Pause billing while deactivated — a customer locked out of login and
+      // sending must not keep getting charged. pause_collection keeps the
+      // subscription alive (void = no invoices while paused); reactivation
+      // resumes it exactly where it was. Best-effort, loud on failure.
+      const { data: orgBilling } = await supabase
+        .from("organizations")
+        .select("stripe_subscription_id, name")
+        .eq("id", org_id)
+        .single();
+
+      if (orgBilling?.stripe_subscription_id) {
+        try {
+          await stripe.subscriptions.update(orgBilling.stripe_subscription_id, {
+            pause_collection: active ? "" : { behavior: "void" },
+          });
+          console.log(
+            `admin-org-set-active: billing ${active ? "resumed" : "paused"} for ${orgBilling.name}`
+          );
+        } catch (pauseErr) {
+          console.error(
+            `BILLING NOTE: ${active ? "resuming" : "pausing"} billing for ${orgBilling.name} failed — adjust sub ${orgBilling.stripe_subscription_id} manually:`,
+            pauseErr
+          );
+        }
+      }
+
+      // Deactivating a referred org drops its $5 from the referrer's bill;
+      // reactivating restores it. Never fatal — see utils/referrals.ts.
+      await recalcDiscountForReferrerOf(supabase, stripe, org_id);
     }
 
     console.log(

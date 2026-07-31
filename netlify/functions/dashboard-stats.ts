@@ -1,6 +1,7 @@
 import { getSupabase } from "./utils/supabase";
 import { corsResponse, jsonResponse } from "./utils/cors";
 import { authenticateRequest } from "./utils/auth";
+import { computeGraceLimit, currentMonthWindow } from "./utils/usage";
 
 const COST_PER_SMS = 0.011; // $0.0079 Twilio + ~$0.003 carrier fees
 const PHONE_MONTHLY = 1.15;
@@ -19,23 +20,27 @@ export default async (req: Request) => {
     const supabase = getSupabase();
 
     const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
+    const { monthStart, monthEnd } = currentMonthWindow(now);
     const resetDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
     const [smsThisMonth, smsLifetime, contactsCount, campaignsCount, orgData, userData] =
       await Promise.all([
+        // .neq failed on both: rejected sends never reached anyone — they
+        // don't consume allowance (mirrors the campaign-send gate) and
+        // shouldn't inflate lifetime bragging numbers either.
         supabase
           .from("message_logs")
           .select("id", { count: "exact", head: true })
           .eq("org_id", auth.org_id)
+          .neq("status", "failed")
           .gte("sent_at", monthStart)
           .lt("sent_at", monthEnd),
 
         supabase
           .from("message_logs")
           .select("id", { count: "exact", head: true })
-          .eq("org_id", auth.org_id),
+          .eq("org_id", auth.org_id)
+          .neq("status", "failed"),
 
         supabase
           .from("contacts")
@@ -64,19 +69,18 @@ export default async (req: Request) => {
     const textLimit = orgData.data?.text_limit ?? 600;
     const textsUsed = smsThisMonth.count ?? 0;
     const activeContacts = contactsCount.count ?? 0;
-    const standardGrace = textLimit + (activeContacts * 2);
 
-    // Per-org one-time bonus — only active while bonus_expires_at is in the future.
-    // When it expires the grace naturally drops back to the standard formula;
-    // no cron/cleanup job needed.
+    // Shared formula — utils/usage.ts (same math the send gate enforces).
     const bonusExtra = orgData.data?.bonus_extra_texts ?? 0;
     const bonusExpiresAt = orgData.data?.bonus_expires_at as string | null;
     const bonusNote = (orgData.data?.bonus_note as string | null) ?? null;
-    const bonusActive = bonusExtra > 0
-      && bonusExpiresAt != null
-      && new Date(bonusExpiresAt) > now;
-
-    const graceLimit = standardGrace + (bonusActive ? bonusExtra : 0);
+    const { graceLimit, bonusActive } = computeGraceLimit({
+      textLimit,
+      contactCount: activeContacts,
+      bonusExtra,
+      bonusExpiresAt,
+      now,
+    });
     const isSuperAdmin = userData.data?.super_admin === true;
 
     const response: Record<string, unknown> = {
@@ -95,33 +99,52 @@ export default async (req: Request) => {
 
     // Super admin gets global cost data across ALL orgs
     if (isSuperAdmin) {
-      const [globalMonth, globalLifetime, totalOrgs] = await Promise.all([
+      const [globalMonth, globalLifetime, totalOrgs, orgsWithNumbers] = await Promise.all([
+        // Failed sends cost ~$0 at Twilio — excluding them makes the cost
+        // estimator track real spend.
         supabase
           .from("message_logs")
           .select("id", { count: "exact", head: true })
+          .neq("status", "failed")
           .gte("sent_at", monthStart)
           .lt("sent_at", monthEnd),
 
         supabase
           .from("message_logs")
-          .select("id", { count: "exact", head: true }),
+          .select("id", { count: "exact", head: true })
+          .neq("status", "failed"),
 
         supabase
           .from("organizations")
           .select("id", { count: "exact", head: true })
           .eq("active", true),
+
+        // Each org with its own Twilio number is a separate ~$1.15/mo line.
+        supabase
+          .from("organizations")
+          .select("id", { count: "exact", head: true })
+          .not("twilio_phone_number", "is", null),
       ]);
 
       const globalMonthCount = globalMonth.count ?? 0;
       const globalLifetimeCount = globalLifetime.count ?? 0;
       const orgCount = totalOrgs.count ?? 0;
 
+      // Phone rental used to be a flat $1.15 because the whole platform shared
+      // one number. With per-org numbers it scales, plus the shared fallback
+      // number if one is still configured.
+      const provisionedNumbers = orgsWithNumbers.count ?? 0;
+      const sharedNumbers = process.env.TWILIO_PHONE_NUMBER ? 1 : 0;
+      const phoneCost = parseFloat(
+        ((provisionedNumbers + sharedNumbers) * PHONE_MONTHLY).toFixed(2)
+      );
+
       response.admin = {
         global_sms_this_month: globalMonthCount,
         global_sms_lifetime: globalLifetimeCount,
-        cost_this_month: parseFloat((globalMonthCount * COST_PER_SMS + PHONE_MONTHLY).toFixed(2)),
+        cost_this_month: parseFloat((globalMonthCount * COST_PER_SMS + phoneCost).toFixed(2)),
         cost_lifetime: parseFloat((globalLifetimeCount * COST_PER_SMS).toFixed(2)),
-        phone_monthly: PHONE_MONTHLY,
+        phone_monthly: phoneCost,
         total_orgs: orgCount,
       };
     }

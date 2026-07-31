@@ -100,6 +100,10 @@ export interface AdminCompany {
   has_stripe: boolean;
   bonus_extra_texts: number;
   bonus_expires_at: string | null;
+  referral_code: string | null;
+  referred_by_name: string | null;
+  /** Referrals currently earning this org $5/mo each. */
+  earning_referrals: number;
 }
 
 export async function listCompanies(): Promise<AdminCompany[]> {

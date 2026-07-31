@@ -9,7 +9,7 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
-  setUserAndToken: (user: Record<string, unknown>, token: string) => void;
+  setUserAndToken: (user: User, token: string) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -55,10 +55,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(null);
   }, []);
 
-  const setUserAndToken = useCallback((userData: Record<string, unknown>, newToken: string) => {
-    const u = userData as unknown as User;
-    writeSession(u, newToken);
-    setUser(u);
+  const setUserAndToken = useCallback((userData: User, newToken: string) => {
+    writeSession(userData, newToken);
+    setUser(userData);
     setToken(newToken);
   }, []);
 
