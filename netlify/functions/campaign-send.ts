@@ -2,6 +2,7 @@ import { getSupabase } from "./utils/supabase";
 import { corsResponse, jsonResponse } from "./utils/cors";
 import { authenticateRequest } from "./utils/auth";
 import { computeGraceLimit, currentMonthWindow } from "./utils/usage";
+import { getAudience } from "./utils/audience";
 
 /**
  * FAST PATH of the campaign send (2026-07-30 rework).
@@ -107,17 +108,21 @@ export default async (req: Request) => {
       );
     }
 
-    // Count only — the fast path never needs the rows, and fetching them
-    // silently capped at Supabase's 1000-row default, undercounting big orgs.
-    const { count: contactCount, error: contactsError } = await supabase
-      .from("contacts")
-      .select("id", { count: "exact", head: true })
-      .eq("org_id", auth.org_id)
-      .eq("active", true)
-      .eq("opted_in", true);
+    // Shared with campaign-send-background so the count validated here is
+    // exactly the set that gets texted — including the exclusion of numbers
+    // that have failed consecutively.
+    const { audience, error: contactsError } = await getAudience(supabase, auth.org_id);
 
-    if (contactsError) {
+    if (contactsError || !audience) {
       return jsonResponse({ error: "Failed to load contacts" }, 500);
+    }
+
+    const contactCount = audience.contacts.length;
+
+    if (audience.excludedUnreachable > 0) {
+      console.log(
+        `campaign-send: org ${auth.org_id} — skipping ${audience.excludedUnreachable} unreachable number(s)`
+      );
     }
 
     if (!contactCount) {

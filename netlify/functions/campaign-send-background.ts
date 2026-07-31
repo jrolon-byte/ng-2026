@@ -4,6 +4,7 @@ import { corsResponse, jsonResponse } from "./utils/cors";
 import { authenticateRequest } from "./utils/auth";
 import { sendingNumberFor } from "./utils/twilio-numbers";
 import { statusCallbackUrl } from "./twilio-status";
+import { getAudience } from "./utils/audience";
 
 /**
  * BACKGROUND WORKER for campaign sends — the `-background` suffix gives it
@@ -85,26 +86,16 @@ export default async (req: Request) => {
     const prefix = orgSettings?.message_prefix ?? "";
     const suffix = orgSettings?.message_suffix ?? "";
 
-    // Paginate — Supabase caps un-ranged selects at 1000 rows, which would
-    // silently cut every contact past #1000 out of the blast.
-    const PAGE = 1000;
-    const contacts: { id: string; first_name: string | null; phone: string }[] = [];
-    let contactsError: unknown = null;
-    for (let from = 0; ; from += PAGE) {
-      const { data: page, error } = await supabase
-        .from("contacts")
-        .select("id, first_name, phone")
-        .eq("org_id", auth.org_id)
-        .eq("active", true)
-        .eq("opted_in", true)
-        .order("created_at", { ascending: true })
-        .range(from, from + PAGE - 1);
-      if (error) {
-        contactsError = error;
-        break;
-      }
-      contacts.push(...(page ?? []));
-      if (!page || page.length < PAGE) break;
+    // Same helper campaign-send validated against, so the set that was
+    // counted and gated is exactly the set that gets texted — paginated, and
+    // with consecutively-failing numbers excluded.
+    const { audience, error: contactsError } = await getAudience(supabase, auth.org_id);
+    const contacts = audience?.contacts ?? [];
+
+    if (audience && audience.excludedUnreachable > 0) {
+      console.log(
+        `campaign-send-background: campaign ${campaign.id} — skipping ${audience.excludedUnreachable} unreachable number(s)`
+      );
     }
 
     if (contactsError || contacts.length === 0) {
