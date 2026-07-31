@@ -17,7 +17,7 @@ export default async (req: Request) => {
 
     const { data: org, error } = await supabase
       .from("organizations")
-      .select("id, name, message_prefix, message_suffix, text_limit, plan_status")
+      .select("id, name, message_prefix, message_suffix, text_limit, plan_status, locale")
       .eq("id", auth.org_id)
       .single();
 
