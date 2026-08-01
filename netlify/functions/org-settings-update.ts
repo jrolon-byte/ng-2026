@@ -18,7 +18,7 @@ import { authenticateRequest } from "./utils/auth";
  * prefix, which would push each message to dozens of segments and multiply
  * the Twilio bill for an entire blast by the same factor.
  */
-const MAX_WRAPPER = 60;
+const MAX_WRAPPER = 50;
 
 const LOCALES = new Set(["en", "es"]);
 

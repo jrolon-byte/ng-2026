@@ -365,7 +365,7 @@ export default function Engage() {
 
           {/* Inline settings editor */}
           {editingSettings && (() => {
-            const maxCombined = 60;
+            const maxCombined = 50; // keep in step with MAX_WRAPPER in org-settings-update.ts
             const combinedUsed = editPrefix.length + editSuffix.length;
             const prefixMax = maxCombined - editSuffix.length;
             const suffixMax = maxCombined - editPrefix.length;
