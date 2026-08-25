@@ -1,13 +1,22 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { getContacts, createContact, deleteContact } from '../services/contacts';
+import {
+  getContacts,
+  createContact,
+  deleteContact,
+  updateContact,
+  getContactMessages,
+} from '../services/contacts';
+import type { ContactThread } from '../services/contacts';
 import { sendCampaign, getCampaignStatus } from '../services/campaigns';
 import { getStats } from '../services/dashboard';
 import { getOrgSettings, updateOrgSettings } from '../services/orgs';
 import type { Contact, DashboardStats } from '../types';
+import { isUndeliverable } from '../types';
 import type { OrgSettings } from '../services/orgs';
 import { formatPhone } from '../utils/formatPhone';
 import { formatPhoneInput } from '../utils/formatPhoneInput';
+import { getEngageCopy } from '../i18n/engage';
 import TopNav from '../components/TopNav';
 import Loader from '../components/Loader';
 import UpgradePrompt from '../components/UpgradePrompt';
@@ -25,24 +34,46 @@ export default function Engage() {
   // Add customer
   const [name, setName] = useState('');
   const [mobileNum, setMobileNum] = useState('');
+  const [addError, setAddError] = useState<string | null>(null);
 
   // Message
   const [message, setMessage] = useState('');
   const [showNoMessage, setShowNoMessage] = useState(false);
   const [sending, setSending] = useState(false);
 
+  // List filter — client-side only, and never applied to the send audience:
+  // narrowing what you SEE must not narrow who a blast reaches.
+  const [searchText, setSearchText] = useState('');
+
+  // Dead-number section, collapsed by default (a cleanup task, not a destination).
+  const [showUnreachable, setShowUnreachable] = useState(false);
+
   // Delete confirm per-customer
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  // Contact detail overlay (conversation + edit)
+  const [detailContact, setDetailContact] = useState<Contact | null>(null);
+  const [detailEditing, setDetailEditing] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [savingContact, setSavingContact] = useState(false);
+  const [thread, setThread] = useState<ContactThread | null>(null);
+  const [threadLoading, setThreadLoading] = useState(false);
 
   // Settings editor
   const [editingSettings, setEditingSettings] = useState(false);
   const [editPrefix, setEditPrefix] = useState('');
   const [editSuffix, setEditSuffix] = useState('');
+  const [editLocale, setEditLocale] = useState<'en' | 'es'>('en');
   const [savingSettings, setSavingSettings] = useState(false);
 
   // Upgrade sheet (paywall) open state — controlled so the locked send
   // button can trigger it without duplicating the upgrade UI.
   const [planSheetOpen, setPlanSheetOpen] = useState(false);
+
+  const copy = getEngageCopy(orgSettings?.locale);
 
   useEffect(() => {
     if (!user) return;
@@ -82,11 +113,46 @@ export default function Engage() {
     }
   };
 
+  // ── Audience math ──
+  // Mirrors the iOS SendViewModel exactly: the list splits into reachable
+  // and dead, and the SEND count is opted-in AND deliverable. Counting the
+  // whole list overstated reach on this page for years.
+  const unreachable = customerList.filter(isUndeliverable);
+  const reachable = customerList.filter((c) => !isUndeliverable(c));
+  const sendable = reachable.filter((c) => c.opted_in);
+  const optedOutCount = reachable.length - reachable.filter((c) => c.opted_in).length;
+
+  // Name matching is case-insensitive; number matching compares digits only,
+  // so "555-01" and "(407) 555" both hit the stored E.164 form.
+  const matchesSearch = (c: Contact) => {
+    const q = searchText.trim().toLowerCase();
+    if (!q) return true;
+    const fullName = `${c.first_name} ${c.last_name ?? ''}`.toLowerCase();
+    if (fullName.includes(q)) return true;
+    const digits = q.replace(/\D/g, '');
+    return digits.length > 0 && c.phone.replace(/\D/g, '').includes(digits);
+  };
+  const visibleReachable = reachable.filter(matchesSearch);
+  const visibleUnreachable = unreachable.filter(matchesSearch);
+
+  // Usage helpers
+  const isHardLocked = usage
+    ? usage.sms_this_month + sendable.length > usage.grace_limit
+    : false;
+  const isFirstBlastUsed = orgSettings?.plan_status === 'first_blast'
+    && usage && usage.sms_this_month > 0;
+
+  // Character limit calculation
+  const prefix = orgSettings?.message_prefix ?? '';
+  const suffix = orgSettings?.message_suffix ?? '';
+  const maxChars = 160 - prefix.length - suffix.length;
+  const fullPreview = prefix + (message || 'Your message here...') + suffix;
+
   // Add customer
   const onAddCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !mobileNum.trim()) {
-      alert('Please enter name and mobile number');
+      setAddError(copy.nameAndPhoneRequired);
       return;
     }
 
@@ -97,27 +163,19 @@ export default function Engage() {
       });
       setName('');
       setMobileNum('');
+      setAddError(null);
       setShowAddCustomer(false);
       fetchCustomers();
     } catch (err) {
-      // A swallowed failure here looks identical to success (the sheet
-      // closes, no new row) — the user must see WHY: duplicate, bad phone…
-      alert(err instanceof Error ? err.message : 'Failed to add customer. Please try again.');
+      // The failure surfaces IN the form (not an alert): duplicate numbers
+      // were the common case and an alert read as the app breaking.
+      const msg = err instanceof Error ? err.message : '';
+      setAddError(
+        msg.toLowerCase().includes('already exists') ? copy.phoneAlreadyExists
+          : msg || 'Failed to add customer. Please try again.'
+      );
     }
   };
-
-  // Usage helpers
-  const isHardLocked = usage
-    ? usage.sms_this_month + customerList.length > usage.grace_limit
-    : false;
-  const isFirstBlastUsed = orgSettings?.plan_status === 'first_blast'
-    && usage && usage.sms_this_month > 0;
-
-  // Character limit calculation
-  const prefix = orgSettings?.message_prefix ?? '';
-  const suffix = orgSettings?.message_suffix ?? '';
-  const maxChars = 160 - prefix.length - suffix.length;
-  const fullPreview = prefix + (message || 'Your message here...') + suffix;
 
   // Send message — the server QUEUES the blast and a background worker
   // delivers it (big lists take minutes; the old sync call died at ~50
@@ -167,11 +225,11 @@ export default function Engage() {
       }
 
       if (final && final.status === 'completed') {
-        alert(`Success! Your message went out to ${final.total_delivered} customer${final.total_delivered === 1 ? '' : 's'}.`);
+        alert(copy.sendSuccess(final.total_delivered));
       } else if (final && final.status === 'failed') {
-        alert('The send failed — no messages could be delivered. Please try again or contact support.');
+        alert(copy.sendFailed);
       } else {
-        alert(`Your blast to ${queued.total_recipients} customers is still sending in the background — check Campaigns for the final count.`);
+        alert(copy.sendStillRunning(queued.total_recipients));
       }
       fetchUsage(); // refresh usage bar
     } catch (err) {
@@ -197,9 +255,65 @@ export default function Engage() {
     try {
       await deleteContact(contact.id);
       setConfirmDeleteId(null);
+      if (detailContact?.id === contact.id) closeDetail();
       fetchCustomers();
     } catch {
       // silent
+    }
+  };
+
+  // ── Contact detail (conversation + edit) ──
+
+  const openDetail = (contact: Contact, startEditing = false) => {
+    setDetailContact(contact);
+    setDetailEditing(startEditing);
+    setEditName(contact.first_name);
+    setEditPhone(formatPhoneInput(contact.phone));
+    setEditEmail(contact.email ?? '');
+    setDetailError(null);
+    setThread(null);
+    setThreadLoading(true);
+
+    // Opening the thread reads it: mark_read clears the badge server-side,
+    // and the local row updates so the badge dies without a refetch.
+    const hadUnread = contact.unread_replies > 0;
+    getContactMessages(contact.id, hadUnread)
+      .then((t) => {
+        setThread(t);
+        if (hadUnread) {
+          setCustomerList((list) =>
+            list.map((c) => (c.id === contact.id ? { ...c, unread_replies: 0 } : c))
+          );
+        }
+      })
+      .catch(() => setThread({ messages: [], omitted_count: 0 }))
+      .finally(() => setThreadLoading(false));
+  };
+
+  const closeDetail = () => {
+    setDetailContact(null);
+    setDetailEditing(false);
+    setDetailError(null);
+    setThread(null);
+  };
+
+  const onSaveContact = async () => {
+    if (!detailContact) return;
+    setSavingContact(true);
+    setDetailError(null);
+    try {
+      await updateContact({
+        contact_id: detailContact.id,
+        first_name: editName.trim(),
+        phone: editPhone,
+        email: editEmail.trim() || undefined,
+      });
+      closeDetail();
+      fetchCustomers();
+    } catch (err) {
+      setDetailError(err instanceof Error ? err.message : copy.couldntSave);
+    } finally {
+      setSavingContact(false);
     }
   };
 
@@ -207,6 +321,7 @@ export default function Engage() {
   const openSettings = () => {
     setEditPrefix(orgSettings?.message_prefix ?? '');
     setEditSuffix(orgSettings?.message_suffix ?? '');
+    setEditLocale(orgSettings?.locale === 'es' ? 'es' : 'en');
     setEditingSettings(true);
   };
 
@@ -216,11 +331,12 @@ export default function Engage() {
       await updateOrgSettings({
         message_prefix: editPrefix,
         message_suffix: editSuffix,
+        locale: editLocale,
       });
       setEditingSettings(false);
       fetchOrgSettings();
     } catch {
-      alert('Failed to save settings');
+      alert(copy.failedToSave);
     } finally {
       setSavingSettings(false);
     }
@@ -237,6 +353,88 @@ export default function Engage() {
     );
   }
 
+  const renderCustomerCard = (customer: Contact) => {
+    const dead = isUndeliverable(customer);
+    const hasReply = customer.unread_replies > 0;
+
+    if (confirmDeleteId === customer.id) {
+      return (
+        <div className="customer confirmDelete">
+          <h3>{copy.removeConfirm(customer.first_name)}</h3>
+          <div className="btnOptions">
+            <button
+              className="btn"
+              style={{ color: 'white', background: 'black' }}
+              onClick={() => setConfirmDeleteId(null)}
+            >
+              {copy.no}
+            </button>
+            <button
+              className="btn"
+              style={{ color: 'white', background: 'red' }}
+              onClick={() => onDelete(customer)}
+            >
+              {copy.yes}
+            </button>
+          </div>
+          {customer.created_at && (
+            <small className="floatRight">
+              {copy.memberSince}:&nbsp;
+              {new Date(customer.created_at).toLocaleDateString()}
+            </small>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div
+        className={`customer customer--clickable${hasReply ? ' customer--reply' : ''}${dead ? ' customer--dead' : ''}`}
+        onClick={() => openDetail(customer)}
+      >
+        <h3>
+          <span className="customer-name">
+            {customer.first_name}
+            {hasReply && <span className="reply-badge">{copy.newBadge(customer.unread_replies)}</span>}
+            {!dead && !customer.opted_in && (
+              <span className="optout-badge">{copy.optedOut}</span>
+            )}
+          </span>
+          <FaTrashAlt
+            onClick={(e) => {
+              e.stopPropagation();
+              setConfirmDeleteId(customer.id);
+            }}
+            style={{ color: 'red', cursor: 'pointer' }}
+          />
+        </h3>
+        <p>{formatPhone(customer.phone)}</p>
+        {dead && (
+          <p className="dead-note">{copy.lastTextsNeverArrived(customer.consecutive_failures)}</p>
+        )}
+        {dead ? (
+          <button
+            type="button"
+            className="fix-number-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              openDetail(customer, true);
+            }}
+          >
+            ✏️ {copy.fixNumber}
+          </button>
+        ) : (
+          customer.created_at && (
+            <small className="floatRight">
+              {copy.memberSince}:&nbsp;
+              {new Date(customer.created_at).toLocaleDateString()}
+            </small>
+          )
+        )}
+      </div>
+    );
+  };
+
   return (
     <div>
       <TopNav />
@@ -244,13 +442,16 @@ export default function Engage() {
       {/* Title bar */}
       <div className="contain">
         <div className="header">
-          <h2>Engage</h2>
+          <h2>{copy.title}</h2>
           <button
             className="btn"
             style={{ color: 'white', background: 'black' }}
-            onClick={() => setShowAddCustomer(!showAddCustomer)}
+            onClick={() => {
+              setAddError(null);
+              setShowAddCustomer(!showAddCustomer);
+            }}
           >
-            {showAddCustomer ? 'Close' : 'Add New Customer'}
+            {showAddCustomer ? copy.close : copy.addCustomer}
           </button>
         </div>
       </div>
@@ -259,12 +460,12 @@ export default function Engage() {
       {showAddCustomer && (
         <div className="contain">
           <div>
-            <h3>Add Customer</h3>
+            <h3>{copy.addCustomer}</h3>
             <form className="add-form">
               <div className="form-control">
                 <input
                   type="text"
-                  placeholder="Customer Name"
+                  placeholder={copy.customerName}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                 />
@@ -272,18 +473,19 @@ export default function Engage() {
               <div className="form-control">
                 <input
                   type="tel"
-                  placeholder="Mobile number"
+                  placeholder={copy.mobileNumber}
                   value={mobileNum}
                   onChange={(e) => setMobileNum(formatPhoneInput(e.target.value))}
                   maxLength={14}
                 />
               </div>
+              {addError && <p className="errorText">{addError}</p>}
               <button
                 onClick={onAddCustomer}
                 className="btn btn-block"
                 style={{ color: 'white', background: 'black' }}
               >
-                Add New Customer
+                {copy.addCustomerCta}
               </button>
             </form>
           </div>
@@ -312,11 +514,11 @@ export default function Engage() {
       {/* Textarea / Send */}
       <div className="contain">
         <form className="engagement-form">
-          <p className="engage-tip">💡 Use <strong>@Name</strong> to personalize — each customer sees their own name</p>
+          <p className="engage-tip">💡 {copy.personalizeTip}</p>
 
           <div className="form-control">
             <textarea
-              placeholder="Ey @Name, pasa por la barberia hoy! 🔥"
+              placeholder={copy.composePlaceholder}
               value={message}
               onChange={(e) => {
                 if (e.target.value.length <= maxChars) {
@@ -336,11 +538,7 @@ export default function Engage() {
               <span>{message.length} / {maxChars}</span>
             </div>
             {showNoMessage && (
-              <p className="errorText">
-                Do you really want to text {customerList.length} customers
-                nothing? Type an engaging message to bring them through your
-                door!
-              </p>
+              <p className="errorText">{copy.emptyMessageWarning(sendable.length)}</p>
             )}
           </div>
 
@@ -348,13 +546,13 @@ export default function Engage() {
           {message.length > 0 && (
             <div className="sms-preview-section">
               <div className="sms-preview-header">
-                <span className="sms-preview-label">Message Preview</span>
+                <span className="sms-preview-label">{copy.messagePreview}</span>
                 <button
                   type="button"
                   className="sms-preview-edit"
                   onClick={openSettings}
                 >
-                  Edit
+                  {copy.edit}
                 </button>
               </div>
               <div className="sms-preview">
@@ -374,14 +572,14 @@ export default function Engage() {
             return (
             <div className="settings-editor">
               <div className="form-control">
-                <label className="settings-label">Header (before your message)</label>
+                <label className="settings-label">{copy.headerLabel}</label>
                 <input
                   type="text"
                   value={editPrefix}
                   onChange={(e) => {
                     if (e.target.value.length <= prefixMax) setEditPrefix(e.target.value);
                   }}
-                  placeholder="YourBusiness: "
+                  placeholder={copy.headerPlaceholder}
                   maxLength={prefixMax}
                 />
                 <div className="engage-char-count">
@@ -389,14 +587,14 @@ export default function Engage() {
                 </div>
               </div>
               <div className="form-control">
-                <label className="settings-label">Footer (after your message)</label>
+                <label className="settings-label">{copy.footerLabel}</label>
                 <input
                   type="text"
                   value={editSuffix}
                   onChange={(e) => {
                     if (e.target.value.length <= suffixMax) setEditSuffix(e.target.value);
                   }}
-                  placeholder=" -- Call Now: 407-000-0000"
+                  placeholder={copy.footerPlaceholder}
                   maxLength={suffixMax}
                 />
                 <div className="engage-char-count">
@@ -404,8 +602,28 @@ export default function Engage() {
                 </div>
               </div>
               <p className="settings-remaining">
-                {messageCharsLeft} characters left for your message
+                {copy.charactersLeftForMessage(messageCharsLeft)}
               </p>
+              <div className="form-control">
+                <label className="settings-label">{copy.language}</label>
+                <div className="locale-toggle">
+                  <button
+                    type="button"
+                    className={`locale-option${editLocale === 'en' ? ' locale-option--active' : ''}`}
+                    onClick={() => setEditLocale('en')}
+                  >
+                    English
+                  </button>
+                  <button
+                    type="button"
+                    className={`locale-option${editLocale === 'es' ? ' locale-option--active' : ''}`}
+                    onClick={() => setEditLocale('es')}
+                  >
+                    Español
+                  </button>
+                </div>
+                <p className="settings-remaining">{copy.languageNote}</p>
+              </div>
               <div className="settings-actions">
                 <button
                   type="button"
@@ -414,7 +632,7 @@ export default function Engage() {
                   onClick={saveSettings}
                   disabled={savingSettings}
                 >
-                  {savingSettings ? 'Saving...' : 'Save'}
+                  {savingSettings ? copy.saving : copy.save}
                 </button>
                 <button
                   type="button"
@@ -422,7 +640,7 @@ export default function Engage() {
                   style={{ color: '#666', background: '#f4f4f4' }}
                   onClick={() => setEditingSettings(false)}
                 >
-                  Cancel
+                  {copy.cancel}
                 </button>
               </div>
             </div>
@@ -443,77 +661,196 @@ export default function Engage() {
               }}
               className="btn btn-blue"
               style={{ color: 'white', background: '#3399ff' }}
-              disabled={customerList.length === 0}
+              disabled={sendable.length === 0}
             >
-              Send Mass Text 📲
+              {copy.sendCta}
             </button>
           )}
         </form>
       </div>
 
+      {/* Dead numbers — separated from the working list: these aren't
+          customers you can reach, they're a cleanup job. */}
+      {unreachable.length > 0 && (
+        <div className="contain">
+          <div className="unreachable-section">
+            <button
+              type="button"
+              className="unreachable-header"
+              onClick={() => setShowUnreachable(!showUnreachable)}
+            >
+              <span>⚠️ {copy.unreachableHeader(unreachable.length)}</span>
+              <span className={`unreachable-chevron${showUnreachable ? ' unreachable-chevron--open' : ''}`}>›</span>
+            </button>
+            {showUnreachable && (
+              <div className="unreachable-body">
+                <p className="unreachable-explainer">{copy.unreachableExplainer}</p>
+                {visibleUnreachable.map((customer) => (
+                  <div key={customer.id}>{renderCustomerCard(customer)}</div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Customer List */}
       <div className="contain">
-        {customerList.length > 0 ? (
+        {reachable.length > 0 ? (
           <>
-            <small>{customerList.length} customers</small>
-            {customerList.map((customer) => (
-              <div key={customer.id}>
-                {confirmDeleteId === customer.id ? (
-                  // Confirm delete
-                  <div className="customer confirmDelete">
-                    <h3>
-                      Are you sure you want to remove {customer.first_name}
-                      {' as a client?'}
-                    </h3>
-                    <div className="btnOptions">
-                      <button
-                        className="btn"
-                        style={{ color: 'white', background: 'black' }}
-                        onClick={() => setConfirmDeleteId(null)}
-                      >
-                        No
-                      </button>
-                      <button
-                        className="btn"
-                        style={{ color: 'white', background: 'red' }}
-                        onClick={() => onDelete(customer)}
-                      >
-                        Yes
-                      </button>
-                    </div>
-                    {customer.created_at && (
-                      <small className="floatRight">
-                        Member since:&nbsp;
-                        {new Date(customer.created_at).toLocaleDateString()}
-                      </small>
-                    )}
-                  </div>
-                ) : (
-                  // Normal customer card
-                  <div className="customer">
-                    <h3>
-                      {customer.first_name}
-                      <FaTrashAlt
-                        onClick={() => setConfirmDeleteId(customer.id)}
-                        style={{ color: 'red', cursor: 'pointer' }}
-                      />
-                    </h3>
-                    <p>{formatPhone(customer.phone)}</p>
-                    {customer.created_at && (
-                      <small className="floatRight">
-                        Member since:&nbsp;
-                        {new Date(customer.created_at).toLocaleDateString()}
-                      </small>
-                    )}
-                  </div>
+            <div className="customer-list-header">
+              <small>
+                {copy.yourCustomers(sendable.length)}
+                {optedOutCount > 0 && (
+                  <span className="optout-badge optout-badge--inline">
+                    {copy.optedOutCount(optedOutCount)}
+                  </span>
                 )}
-              </div>
-            ))}
+              </small>
+            </div>
+            <div className="customer-search">
+              <input
+                type="search"
+                placeholder={copy.searchPlaceholder}
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+              />
+            </div>
+            {visibleReachable.length === 0 ? (
+              <p className="no-matches">{copy.noSearchMatches}</p>
+            ) : (
+              visibleReachable.map((customer) => (
+                <div key={customer.id}>{renderCustomerCard(customer)}</div>
+              ))
+            )}
           </>
         ) : (
-          <p>Add a customer to see them here.</p>
+          <p>{copy.emptyList}</p>
         )}
       </div>
+
+      {/* Contact detail overlay: the conversation, plus editing */}
+      {detailContact && (
+        <div className="modal-overlay" onClick={closeDetail}>
+          <div className="modal contact-detail" onClick={(e) => e.stopPropagation()}>
+            {detailEditing ? (
+              <>
+                <h3 className="modal-title">{copy.editCustomer}</h3>
+                <div className="form-control">
+                  <label className="settings-label">{copy.customerName}</label>
+                  <input
+                    type="text"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                  />
+                </div>
+                <div className="form-control">
+                  <label className="settings-label">{copy.mobileNumber}</label>
+                  <input
+                    type="tel"
+                    value={editPhone}
+                    onChange={(e) => setEditPhone(formatPhoneInput(e.target.value))}
+                    maxLength={14}
+                    autoFocus={isUndeliverable(detailContact)}
+                  />
+                </div>
+                <div className="form-control">
+                  <label className="settings-label">{copy.emailOptional}</label>
+                  <input
+                    type="email"
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                  />
+                </div>
+                {detailError && <p className="errorText">{detailError}</p>}
+                <div className="settings-actions">
+                  <button
+                    className="btn"
+                    style={{ color: 'white', background: 'black' }}
+                    onClick={onSaveContact}
+                    disabled={savingContact}
+                  >
+                    {savingContact ? copy.saving : copy.saveChanges}
+                  </button>
+                  <button
+                    className="btn"
+                    style={{ color: '#666', background: '#f4f4f4' }}
+                    onClick={() => setDetailEditing(false)}
+                  >
+                    {copy.cancel}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="contact-detail-header">
+                  <div>
+                    <h3 className="modal-title">{detailContact.first_name}</h3>
+                    <p className="contact-detail-phone">{formatPhone(detailContact.phone)}</p>
+                    {!detailContact.opted_in && (
+                      <span className="optout-badge">{copy.optedOut}</span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className="sms-preview-edit"
+                    onClick={() => setDetailEditing(true)}
+                  >
+                    {copy.edit}
+                  </button>
+                </div>
+
+                <p className="settings-label conversation-label">{copy.conversation}</p>
+                {threadLoading ? (
+                  <p className="conversation-loading">{copy.loadingConversation}</p>
+                ) : thread && thread.messages.length > 0 ? (
+                  <div className="thread">
+                    {thread.omitted_count > 0 && (
+                      <p className="thread-omitted">{copy.earlierHidden(thread.omitted_count)}</p>
+                    )}
+                    {thread.messages.map((m) => (
+                      <div
+                        key={m.id}
+                        className={`thread-row thread-row--${m.direction}`}
+                      >
+                        <div className={`thread-bubble thread-bubble--${m.direction}`}>
+                          {m.body}
+                        </div>
+                        {m.created_at && (
+                          <small className="thread-time">
+                            {new Date(m.created_at).toLocaleDateString()}
+                          </small>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="conversation-loading">
+                    {copy.nothingYet(detailContact.first_name)}
+                  </p>
+                )}
+
+                <div className="settings-actions">
+                  <button
+                    className="btn"
+                    style={{ color: 'white', background: 'red' }}
+                    onClick={() => onDelete(detailContact)}
+                  >
+                    {copy.remove}
+                  </button>
+                  <button
+                    className="btn"
+                    style={{ color: '#666', background: '#f4f4f4' }}
+                    onClick={closeDetail}
+                  >
+                    {copy.close}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

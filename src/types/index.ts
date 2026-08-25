@@ -39,6 +39,18 @@ export interface Contact {
   opted_in: boolean;
   active: boolean;
   created_at: string;
+  /** Replies not yet seen. contacts-list has always returned these three
+   *  signal fields — the web ignored them until 2026-08. */
+  unread_replies: number;
+  last_reply_at: string | null;
+  consecutive_failures: number;
+}
+
+/** Nothing has arrived at this number in a long time. Mirrors the iOS rule
+ *  (`Contact.isUndeliverable`): a reply proves the number is alive, so it
+ *  overrides any failure streak. */
+export function isUndeliverable(c: Contact): boolean {
+  return (c.consecutive_failures ?? 0) >= 3 && (c.unread_replies ?? 0) === 0;
 }
 
 export interface Campaign {

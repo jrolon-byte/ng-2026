@@ -2488,3 +2488,254 @@ body {
   color: #065f46;
   margin-top: 2px;
 }
+
+/* ============================================
+   Engage parity pass (2026-08) — search, reply
+   badges, dead numbers, conversation thread
+   ============================================ */
+
+.customer--clickable {
+  cursor: pointer;
+}
+
+.customer--reply {
+  background: #e8f3ff;
+}
+
+.customer--dead {
+  background: #fdf0f0;
+}
+
+.customer-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.reply-badge {
+  background: #3399ff;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.optout-badge {
+  background: rgba(220, 38, 38, 0.12);
+  color: #dc2626;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.optout-badge--inline {
+  margin-left: 8px;
+}
+
+.dead-note {
+  color: #dc2626;
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.fix-number-btn {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 6px 14px;
+  border: 1px solid #d0d7de;
+  border-radius: 999px;
+  background: #fff;
+  color: #3399ff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.customer-list-header small {
+  display: inline-flex;
+  align-items: center;
+}
+
+.customer-search {
+  margin: 8px 5px 10px;
+}
+
+.customer-search input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #d0d7de;
+  border-radius: 10px;
+  font-size: 15px;
+  background: #fafafa;
+}
+
+.customer-search input:focus {
+  outline: none;
+  border-color: #3399ff;
+  background: #fff;
+}
+
+.no-matches {
+  color: #666;
+  text-align: center;
+  padding: 24px 0;
+}
+
+/* Dead-number section */
+.unreachable-section {
+  border: 1px solid rgba(220, 38, 38, 0.25);
+  background: rgba(220, 38, 38, 0.05);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.unreachable-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: none;
+  border: none;
+  font-size: 15px;
+  font-weight: 600;
+  color: #b91c1c;
+  cursor: pointer;
+}
+
+.unreachable-chevron {
+  font-size: 18px;
+  transition: transform 0.15s ease;
+}
+
+.unreachable-chevron--open {
+  transform: rotate(90deg);
+}
+
+.unreachable-body {
+  padding: 0 10px 10px;
+}
+
+.unreachable-explainer {
+  font-size: 13px;
+  color: #7f1d1d;
+  margin: 0 8px 8px;
+}
+
+/* Contact detail overlay */
+.contact-detail {
+  max-width: 460px;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.contact-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.contact-detail-phone {
+  font-family: monospace;
+  color: #555;
+  margin: 2px 0 6px;
+}
+
+.conversation-label {
+  margin-top: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 11px;
+  color: #888;
+}
+
+.conversation-loading {
+  color: #666;
+  font-size: 14px;
+  padding: 12px 0;
+}
+
+.thread {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0 12px;
+}
+
+.thread-omitted {
+  text-align: center;
+  color: #999;
+  font-size: 12px;
+}
+
+.thread-row {
+  display: flex;
+  flex-direction: column;
+  max-width: 85%;
+}
+
+.thread-row--outbound {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+.thread-row--inbound {
+  align-self: flex-start;
+  align-items: flex-start;
+}
+
+.thread-bubble {
+  padding: 8px 14px;
+  border-radius: 16px;
+  font-size: 14px;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.thread-bubble--outbound {
+  background: #3399ff;
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+.thread-bubble--inbound {
+  background: #ececec;
+  color: #111;
+  border-bottom-left-radius: 4px;
+}
+
+.thread-time {
+  color: #999;
+  font-size: 10px;
+  margin-top: 2px;
+}
+
+/* Language toggle in settings */
+.locale-toggle {
+  display: flex;
+  gap: 8px;
+  margin: 4px 0;
+}
+
+.locale-option {
+  padding: 8px 18px;
+  border: 1px solid #d0d7de;
+  border-radius: 999px;
+  background: #fff;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.locale-option--active {
+  background: #111;
+  color: #fff;
+  border-color: #111;
+}

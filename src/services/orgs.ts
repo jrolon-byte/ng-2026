@@ -41,6 +41,8 @@ export interface OrgSettings {
   message_suffix: string | null;
   text_limit: number;
   plan_status: string | null;
+  /** 'en' | 'es' — drives the app's language for this shop. */
+  locale: string | null;
 }
 
 export async function getOrgSettings(): Promise<OrgSettings | null> {
@@ -56,8 +58,9 @@ export async function getOrgSettings(): Promise<OrgSettings | null> {
 }
 
 export async function updateOrgSettings(data: {
-  message_prefix: string;
-  message_suffix: string;
+  message_prefix?: string;
+  message_suffix?: string;
+  locale?: 'en' | 'es';
 }): Promise<void> {
   const response = await fetch(`${BASE_URL}/org-settings-update`, {
     method: 'POST',

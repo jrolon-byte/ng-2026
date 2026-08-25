@@ -75,6 +75,63 @@ export async function bulkCreateContacts(contacts: {
   return response.json();
 }
 
+export async function updateContact(data: {
+  contact_id: string;
+  first_name: string;
+  last_name?: string;
+  phone: string;
+  email?: string;
+}): Promise<Contact> {
+  const response = await fetch(`${BASE_URL}/contacts-update`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Failed to save changes' }));
+    throw new Error(error.error || 'Failed to save changes');
+  }
+
+  const result = await response.json();
+  return result.contact;
+}
+
+export interface ThreadMessage {
+  id: string;
+  direction: 'outbound' | 'inbound';
+  body: string;
+  created_at: string | null;
+  status: string | null;
+}
+
+export interface ContactThread {
+  messages: ThreadMessage[];
+  /** Older broadcasts the server windowed out of the thread. */
+  omitted_count: number;
+}
+
+/** The conversation with one customer. `markRead` clears their unread-reply
+ *  flag server-side — opening the thread IS reading it. */
+export async function getContactMessages(
+  contactId: string,
+  markRead: boolean,
+): Promise<ContactThread> {
+  const params = `contact_id=${contactId}${markRead ? '&mark_read=1' : ''}`;
+  const response = await fetch(`${BASE_URL}/contact-messages?${params}`, {
+    method: 'GET',
+    headers: getHeaders(),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Failed to load conversation' }));
+    throw new Error(error.error || 'Failed to load conversation');
+  }
+
+  const data = await response.json();
+  return { messages: data.messages ?? [], omitted_count: data.omitted_count ?? 0 };
+}
+
 export async function deleteContact(contactId: string): Promise<void> {
   const response = await fetch(`${BASE_URL}/contacts-delete?contact_id=${contactId}`, {
     method: 'DELETE',
