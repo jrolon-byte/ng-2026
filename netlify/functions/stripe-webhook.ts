@@ -112,15 +112,33 @@ export default async (req: Request) => {
           // Create user. password_hash arrives pre-bcrypted from checkout
           // (2026-07-30); metadata.password fallback covers checkout sessions
           // minted before that deploy — those still lazy-upgrade on login.
-          const { error: userError } = await supabase.from("users").insert({
+          //
+          // Email is the REAL address Stripe collected at checkout — the only
+          // point in the funnel where the customer types one. The
+          // @notifygrid.app placeholder survives as a fallback because
+          // users.email is UNIQUE and NOT NULL: a missing or already-claimed
+          // address must never fail the insert, since that rolls back a PAID
+          // signup into a retry loop that can't succeed.
+          const realEmail = session.customer_details?.email?.toLowerCase();
+          const placeholderEmail = `${metadata.username}@notifygrid.app`;
+          const newUser = {
             org_id: org.id,
             username: metadata.username,
-            email: `${metadata.username}@notifygrid.app`,
             password_hash: metadata.password_hash || metadata.password,
             first_name: metadata.first_name,
             last_name: metadata.last_name,
             role: "admin",
-          });
+          };
+
+          let { error: userError } = await supabase
+            .from("users")
+            .insert({ ...newUser, email: realEmail || placeholderEmail });
+
+          if (userError?.code === "23505" && realEmail) {
+            ({ error: userError } = await supabase
+              .from("users")
+              .insert({ ...newUser, email: placeholderEmail }));
+          }
 
           if (userError) {
             // Roll the org back — a retry re-runs this whole branch cleanly,
