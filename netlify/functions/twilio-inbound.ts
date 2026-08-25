@@ -2,6 +2,7 @@ import twilio from "twilio";
 import { getSupabase } from "./utils/supabase";
 import { normalizePhone } from "./utils/phone";
 import { webhookUrlCandidates } from "./utils/twilio-numbers";
+import { pushToOrg } from "./utils/apns";
 
 /**
  * Twilio inbound-SMS webhook — a customer replying to a shop's blast.
@@ -112,7 +113,7 @@ export default async (req: Request) => {
 
     const { data: contact } = await supabase
       .from("contacts")
-      .select("id")
+      .select("id, first_name")
       .eq("org_id", org.id)
       .eq("phone", senderE164)
       .maybeSingle();
@@ -161,6 +162,21 @@ export default async (req: Request) => {
 
     if (error) {
       console.error("twilio-inbound: insert failed", error);
+    }
+
+    // ── Push the reply to the shop's phones ─────────────────────────────────
+    // Conversational replies only: STOP/START are bookkeeping, not dialogue,
+    // and "Marcus replied: STOP" is a notification nobody wants. The reply
+    // itself is the single reason the iOS app is worth installing — this is
+    // where it earns its place on the home screen. `pushToOrg` never throws
+    // and no-ops until the APNs key is configured.
+    if (!OPT_OUT_KEYWORDS.has(command) && !OPT_IN_KEYWORDS.has(command)) {
+      const who = contact?.first_name || senderE164;
+      await pushToOrg(supabase, org.id, {
+        title: `💬 ${who} replied`,
+        body: body.length > 120 ? `${body.slice(0, 117)}…` : body,
+        threadId: contact?.id ?? senderE164,
+      });
     }
 
     return twiml();

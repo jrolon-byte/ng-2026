@@ -5,6 +5,7 @@ import { authenticateRequest } from "./utils/auth";
 import { sendingNumberFor } from "./utils/twilio-numbers";
 import { statusCallbackUrl } from "./twilio-status";
 import { getAudience } from "./utils/audience";
+import { pushToOrg } from "./utils/apns";
 
 /**
  * BACKGROUND WORKER for campaign sends — the `-background` suffix gives it
@@ -203,6 +204,16 @@ export default async (req: Request) => {
     console.log(
       `campaign-send-background: campaign ${campaign.id} done — ${totalSent} sent, ${totalFailed} failed of ${contacts.length}`
     );
+
+    // A blast finishing while the owner has pocketed their phone is exactly
+    // what push is for. No-ops until the APNs key is configured; never throws.
+    await pushToOrg(supabase, auth.org_id, {
+      title: totalFailed === contacts.length ? "Blast failed" : "Blast sent 🚀",
+      body:
+        totalFailed === contacts.length
+          ? "No messages could be delivered. Open the app for details."
+          : `Your message reached ${totalSent} customer${totalSent === 1 ? "" : "s"}.`,
+    });
 
     return jsonResponse({
       campaign_id: campaign.id,
