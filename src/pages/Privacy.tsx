@@ -4,8 +4,9 @@ export default function Privacy() {
   return (
     <LegalPage title="Privacy" titleAccent="Policy." effectiveDate="August 30, 2026">
       <p>
-        NotifyGrid ("NotifyGrid," "we," "us") is a text-messaging platform that
-        helps local businesses stay in touch with their customers. This policy
+        NotifyGrid, operated by RoloniumCapital LLC doing business as
+        RoloniumLabs ("NotifyGrid," "we," "us"), is a text-messaging platform
+        that helps local businesses stay in touch with their customers. This policy
         explains what information we collect, why we collect it, and what we do
         with it — in plain language, because that's how we do everything. It
         applies to our website, web application, and iOS app.
@@ -145,7 +146,9 @@ export default function Privacy() {
 
       <h2>Contact us</h2>
       <p>
-        NotifyGrid · Kissimmee, Florida, USA
+        NotifyGrid · RoloniumCapital LLC dba RoloniumLabs
+        <br />
+        Kissimmee, Florida, USA
         <br />
         <a href="mailto:support@notifygrid.com">support@notifygrid.com</a>
       </p>

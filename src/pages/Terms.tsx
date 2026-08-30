@@ -4,7 +4,8 @@ export default function Terms() {
   return (
     <LegalPage title="Terms of" titleAccent="Use." effectiveDate="August 30, 2026">
       <p>
-        These terms are the agreement between you and NotifyGrid ("NotifyGrid,"
+        These terms are the agreement between you and RoloniumCapital LLC, doing
+        business as RoloniumLabs, the operator of NotifyGrid ("NotifyGrid,"
         "we," "us") when you use our website, web application, or iOS app. By
         creating an account or using the service, you agree to them. We've kept
         them as plain as the law allows.
@@ -141,7 +142,9 @@ export default function Terms() {
 
       <h2>Contact us</h2>
       <p>
-        NotifyGrid · Kissimmee, Florida, USA
+        NotifyGrid · RoloniumCapital LLC dba RoloniumLabs
+        <br />
+        Kissimmee, Florida, USA
         <br />
         <a href="mailto:support@notifygrid.com">support@notifygrid.com</a>
       </p>
