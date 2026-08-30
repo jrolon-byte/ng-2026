@@ -2739,3 +2739,65 @@ body {
   color: #fff;
   border-color: #111;
 }
+
+/* ============ LEGAL PAGES (/privacy, /terms) ============ */
+.ng-legal-main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 56px 24px 80px;
+}
+.ng-legal .ng-auth-title { font-size: 44px; }
+.ng-legal-date {
+  margin-top: 10px;
+  font-family: var(--ng-font-mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(10, 14, 26, 0.55);
+}
+.ng-legal-doc > p,
+.ng-legal-doc li {
+  margin-top: 16px;
+  font-size: 16px;
+  line-height: 1.65;
+  color: rgba(10, 14, 26, 0.82);
+}
+.ng-legal-doc h2 {
+  margin-top: 40px;
+  font-family: var(--ng-font-display);
+  font-weight: 600;
+  font-size: 24px;
+  letter-spacing: -0.01em;
+  color: var(--ng-ink);
+}
+.ng-legal-doc ul {
+  margin-top: 8px;
+  padding-left: 22px;
+}
+.ng-legal-doc li { margin-top: 8px; }
+.ng-legal-doc a {
+  color: var(--ng-brand-deep);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.ng-legal-foot {
+  margin-top: 56px;
+  padding-top: 24px;
+  border-top: 1px solid var(--ng-line);
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 14px;
+  color: rgba(10, 14, 26, 0.6);
+}
+@media (max-width: 600px) {
+  .ng-legal .ng-auth-title { font-size: 34px; }
+  .ng-legal-main { padding: 40px 18px 60px; }
+}
+.ng-auth-legal-links {
+  margin-top: 14px;
+  text-align: center;
+  font-size: 13px;
+  color: rgba(10, 14, 26, 0.5);
+}
+.ng-auth-legal-links a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }

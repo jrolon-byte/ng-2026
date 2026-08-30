@@ -115,6 +115,9 @@ export default function Login() {
           <p className="ng-auth-trust">
             ★ <strong>9 YEARS</strong> SERVING LOCAL SHOPS · BUILT IN KISSIMMEE, FL ★
           </p>
+          <p className="ng-auth-legal-links">
+            <Link to="/terms">Terms</Link> · <Link to="/privacy">Privacy</Link>
+          </p>
         </div>
       </main>
     </div>

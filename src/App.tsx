@@ -8,6 +8,8 @@ import Engage from './pages/Engage';
 import Dashboard from './pages/Dashboard';
 import CampaignHistory from './pages/CampaignHistory';
 import AdminCompanies from './pages/AdminCompanies';
+import Privacy from './pages/Privacy';
+import Terms from './pages/Terms';
 
 export default function App() {
   return (
@@ -17,6 +19,10 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/signup/success" element={<SignupSuccess />} />
+          {/* Public legal pages — App Store review, Twilio A2P vetting, and
+              SMS recipients reach these without an account. */}
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/terms" element={<Terms />} />
           <Route
             path="/engage"
             element={

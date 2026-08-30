@@ -224,6 +224,10 @@ export default function Signup() {
                   ? 'Secure checkout by Stripe. $49/mo subscription — cancel anytime.'
                   : 'Secure checkout by Stripe. Cancel anytime before your first blast.'}
               </p>
+              <p className="ng-auth-fineprint">
+                By continuing you agree to our <Link to="/terms">Terms of Use</Link> and{' '}
+                <Link to="/privacy">Privacy Policy</Link>.
+              </p>
             </form>
 
             <p className="ng-auth-meta">
