@@ -42,14 +42,14 @@ export default async (req: Request) => {
     // --- Find user by username, fall back to email ---
     let { data: user, error } = await supabase
       .from("users")
-      .select("id, username, email, org_id, first_name, last_name, role, password_hash, active, token_version")
+      .select("id, username, email, org_id, first_name, last_name, role, password_hash, active, token_version, super_admin")
       .eq("username", username)
       .single();
 
     if (error || !user) {
       const fallback = await supabase
         .from("users")
-        .select("id, username, email, org_id, first_name, last_name, role, password_hash, active, token_version")
+        .select("id, username, email, org_id, first_name, last_name, role, password_hash, active, token_version, super_admin")
         .eq("email", username)
         .single();
       user = fallback.data;
@@ -132,7 +132,16 @@ export default async (req: Request) => {
 
     return jsonResponse({
       token,
-      user: { ...payload, username: user.username, last_name: user.last_name },
+      // super_admin rides the RESPONSE, not the JWT — clients use it to show
+      // or hide admin UI, while every admin endpoint still re-reads the flag
+      // from the DB per request. Keeping it out of the token is what makes
+      // revoking admin instant instead of waiting out a 7-day token.
+      user: {
+        ...payload,
+        username: user.username,
+        last_name: user.last_name,
+        super_admin: user.super_admin === true,
+      },
     });
   } catch {
     return jsonResponse({ error: "Something went wrong" }, 500);

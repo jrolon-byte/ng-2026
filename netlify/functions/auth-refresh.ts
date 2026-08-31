@@ -61,7 +61,7 @@ export default async (req: Request) => {
     // Fresh truth from the DB — never re-mint from stale claims alone.
     const { data: user } = await supabase
       .from("users")
-      .select("id, email, org_id, first_name, last_name, username, role, active, token_version")
+      .select("id, email, org_id, first_name, last_name, username, role, active, token_version, super_admin")
       .eq("id", payload.id)
       .maybeSingle();
 
@@ -103,7 +103,13 @@ export default async (req: Request) => {
 
     return jsonResponse({
       token: signToken(freshPayload),
-      user: { ...freshPayload, username: user.username, last_name: user.last_name },
+      // Response-only, never a JWT claim — same reasoning as auth-login.
+      user: {
+        ...freshPayload,
+        username: user.username,
+        last_name: user.last_name,
+        super_admin: user.super_admin === true,
+      },
     });
   } catch (err) {
     console.error("auth-refresh error:", err);

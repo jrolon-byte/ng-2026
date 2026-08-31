@@ -60,7 +60,10 @@ export default async (req: Request) => {
 
     return jsonResponse({
       token,
-      user: { ...payload, last_name: currentUser.last_name },
+      // Only a super admin reaches this line (403 above), so the flag is
+      // unconditionally true. Without it, adopting the switch response would
+      // silently drop admin status client-side.
+      user: { ...payload, last_name: currentUser.last_name, super_admin: true },
       org,
     });
   } catch {
