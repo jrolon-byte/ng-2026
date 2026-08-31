@@ -143,27 +143,21 @@ function pushToTokens(
 }
 
 /**
- * Push an alert to every registered device in an org.
+ * Deliver to an explicit token list and prune whatever Apple rejects.
  *
- * Tokens Apple reports as dead (410 Unregistered — uninstalled app — or
- * 400 BadDeviceToken — wrong environment) are pruned; a live device simply
- * re-registers on its next launch.
+ * Shared by both entry points below so dead-token cleanup can't drift between
+ * them: 410 Unregistered (app deleted) and 400 BadDeviceToken (wrong APNs
+ * environment) both mean the row is garbage, and a live device re-registers
+ * on its next launch anyway.
  */
-export async function pushToOrg(
+async function deliver(
   supabase: SupabaseClient,
-  orgId: string,
+  tokens: string[],
   alert: { title: string; body: string; threadId?: string }
 ): Promise<void> {
   try {
     const config = getConfig();
     if (!config) return; // feature dark — no key configured yet
-
-    const { data: rows } = await supabase
-      .from("device_tokens")
-      .select("token")
-      .eq("org_id", orgId);
-
-    const tokens = (rows ?? []).map((r) => r.token);
     if (tokens.length === 0) return;
 
     const payload = {
@@ -193,5 +187,151 @@ export async function pushToOrg(
     }
   } catch (err) {
     console.error("apns: unhandled", err);
+  }
+}
+
+/** Push an alert to every registered device in an org. */
+export async function pushToOrg(
+  supabase: SupabaseClient,
+  orgId: string,
+  alert: { title: string; body: string; threadId?: string }
+): Promise<void> {
+  try {
+    if (!getConfig()) return;
+
+    const { data: rows } = await supabase
+      .from("device_tokens")
+      .select("token")
+      .eq("org_id", orgId);
+
+    await deliver(supabase, (rows ?? []).map((r) => r.token), alert);
+  } catch (err) {
+    console.error("apns: pushToOrg unhandled", err);
+  }
+}
+
+/**
+ * Same targeting as `pushToSuperAdmins`, but it REPORTS instead of swallowing.
+ *
+ * Exists because every other path here is deliberately silent — a push must
+ * never fail the webhook that raised it — which makes "nothing arrived"
+ * impossible to diagnose from outside. `admin-test-push` uses this to tell a
+ * missing key apart from an unregistered phone apart from a dead token.
+ *
+ * Still never throws; failure is data here, not an exception.
+ */
+export async function apnsDiagnostics(
+  supabase: SupabaseClient,
+  alert: { title: string; body: string; threadId?: string }
+): Promise<{
+  configured: boolean;
+  host: string | null;
+  topic: string | null;
+  devices: number;
+  results: { token: string; status: number; reason: string | null }[];
+  pruned: number;
+}> {
+  const empty = { configured: false, host: null, topic: null, devices: 0, results: [], pruned: 0 };
+  try {
+    const config = getConfig();
+    if (!config) return empty;
+
+    const base = { configured: true, host: config.host, topic: config.topic };
+
+    const { data: admins } = await supabase
+      .from("users")
+      .select("id")
+      .eq("super_admin", true)
+      .eq("active", true);
+
+    const adminIds = (admins ?? []).map((a) => a.id);
+    if (adminIds.length === 0) return { ...base, devices: 0, results: [], pruned: 0 };
+
+    const { data: rows } = await supabase
+      .from("device_tokens")
+      .select("token")
+      .in("user_id", adminIds);
+
+    const tokens = (rows ?? []).map((r) => r.token);
+    if (tokens.length === 0) return { ...base, devices: 0, results: [], pruned: 0 };
+
+    const payload = {
+      aps: {
+        alert: { title: alert.title, body: alert.body },
+        sound: "default",
+        ...(alert.threadId ? { "thread-id": alert.threadId } : {}),
+      },
+    };
+
+    const results = await pushToTokens(config, providerToken(config), tokens, payload);
+
+    const dead = results.filter(
+      (r) => r.status === 410 || (r.status === 400 && r.reason === "BadDeviceToken")
+    );
+    if (dead.length > 0) {
+      await supabase.from("device_tokens").delete().in("token", dead.map((r) => r.token));
+    }
+
+    return {
+      ...base,
+      devices: tokens.length,
+      // Truncated: enough to tell two phones apart in the output, not enough
+      // to be a credential sitting in a log or a terminal history.
+      results: results.map((r) => ({ ...r, token: r.token.slice(0, 8) + "…" })),
+      pruned: dead.length,
+    };
+  } catch (err) {
+    console.error("apns: diagnostics unhandled", err);
+    return empty;
+  }
+}
+
+/**
+ * Push an operational alert to the operator's own devices.
+ *
+ * Targets by USER, not org — deliberately. A super admin's phone carries the
+ * org_id of whichever shop he last switched into, so an org-scoped push would
+ * reach him only by coincidence, and never for the brand-new org a signup
+ * just created. `device_tokens.user_id` is stamped at registration, so this
+ * finds his phone wherever he happens to be pointed.
+ *
+ * Two queries rather than an embedded join: the relationship name is implicit
+ * in PostgREST and a rename would break this silently at runtime, where a
+ * missed alert is the entire failure mode.
+ *
+ * Never throws — an alert must never fail the webhook that raised it.
+ */
+export async function pushToSuperAdmins(
+  supabase: SupabaseClient,
+  alert: { title: string; body: string; threadId?: string }
+): Promise<void> {
+  try {
+    if (!getConfig()) return;
+
+    const { data: admins } = await supabase
+      .from("users")
+      .select("id")
+      .eq("super_admin", true)
+      .eq("active", true);
+
+    const adminIds = (admins ?? []).map((a) => a.id);
+    if (adminIds.length === 0) return;
+
+    const { data: rows } = await supabase
+      .from("device_tokens")
+      .select("token")
+      .in("user_id", adminIds);
+
+    const tokens = (rows ?? []).map((r) => r.token);
+    if (tokens.length === 0) {
+      // Worth a line: it means the operator has no device registered, so
+      // every admin push from here on is silently going nowhere.
+      console.log("apns: no super-admin devices registered — alert not pushed");
+      return;
+    }
+
+    await deliver(supabase, tokens, alert);
+  } catch (err) {
+    console.error("apns: pushToSuperAdmins unhandled", err);
   }
 }

@@ -3,6 +3,7 @@ import { getSupabase } from "./utils/supabase";
 import { jsonResponse } from "./utils/cors";
 import { recalcDiscountForReferrerOf, recalcReferrerDiscount } from "./utils/referrals";
 import { alertAdmin } from "./utils/admin-alert";
+import { pushToSuperAdmins } from "./utils/apns";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2024-06-20",
@@ -161,10 +162,24 @@ export default async (req: Request) => {
           // Until he provisions one, the shop sends from the shared number
           // and can't receive replies. `ensureOrgNumber` in
           // utils/twilio-numbers.ts does the work when he's ready.
+          const plan = isProSignup ? "Pro $49/mo" : "First Blast $5";
+          const referred = metadata.referred_by_org_id ? " · referred" : "";
+
           await alertAdmin(
             `NotifyGrid: new signup — ${metadata.business_name} (${slug}). ` +
+              `${plan}${referred}. ${metadata.phone ?? "no phone"}. ` +
               `Set up a Twilio number to enable replies. Org ${org.id}`
           );
+
+          // Same news, on the phone he actually looks at. Additive rather
+          // than a replacement for the text: push depends on a registered
+          // device and a live APNs key, and a signup is the one event that
+          // must not be missed because a token went stale.
+          await pushToSuperAdmins(supabase, {
+            title: "New signup",
+            body: `${metadata.business_name} — ${plan}${referred}. Needs a Twilio number.`,
+            threadId: "signup",
+          });
         }
 
         // Upgrade flow – metadata contains org_id
