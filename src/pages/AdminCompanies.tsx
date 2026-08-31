@@ -7,8 +7,10 @@ import {
   listCompanies,
   updateCompany,
   setCompanyActive,
+  sendTestPush,
   type AdminCompany,
   type CompanyPlan,
+  type PushTestReport,
 } from '../services/admin';
 
 /**
@@ -52,6 +54,13 @@ export default function AdminCompanies() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showCreate, setShowCreate] = useState(false);
+
+  // Push diagnostics. Lives on this page because the page is already
+  // super-admin-only (non-admins are redirected below) and the endpoint
+  // enforces its own 403 regardless.
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushReport, setPushReport] = useState<PushTestReport | null>(null);
+  const [pushError, setPushError] = useState('');
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [edit, setEdit] = useState<EditState | null>(null);
@@ -130,6 +139,19 @@ export default function AdminCompanies() {
     }
   };
 
+  const testPush = async () => {
+    setPushBusy(true);
+    setPushError('');
+    setPushReport(null);
+    try {
+      setPushReport(await sendTestPush());
+    } catch (err) {
+      setPushError(err instanceof Error ? err.message : 'Failed to send test push');
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
   if (adminChecked && !isAdmin) {
     return <Navigate to="/engage" replace />;
   }
@@ -146,14 +168,27 @@ export default function AdminCompanies() {
               platform, including deactivated.
             </p>
           </div>
-          <button
-            type="button"
-            className="gift-submit"
-            onClick={() => setShowCreate((v) => !v)}
-          >
-            {showCreate ? 'Close' : '+ New company'}
-          </button>
+          <div className="companies-actions">
+            <button
+              type="button"
+              className="push-test-btn"
+              onClick={testPush}
+              disabled={pushBusy}
+            >
+              {pushBusy ? 'Sending…' : 'Test push'}
+            </button>
+            <button
+              type="button"
+              className="gift-submit"
+              onClick={() => setShowCreate((v) => !v)}
+            >
+              {showCreate ? 'Close' : '+ New company'}
+            </button>
+          </div>
         </div>
+
+        {pushError && <div className="gift-error">{pushError}</div>}
+        {pushReport && <PushReport report={pushReport} />}
 
         {showCreate && (
           <div className="companies-create">
@@ -330,5 +365,53 @@ export default function AdminCompanies() {
         )}
       </div>
     </Layout>
+  );
+}
+
+/**
+ * Turns the raw diagnostic into the one sentence that matters, because the
+ * failure modes are indistinguishable from the outside: nothing arrives
+ * whether the key is missing, no phone is registered, or the token is stale.
+ */
+function PushReport({ report }: { report: PushTestReport }) {
+  const delivered = report.results.filter((r) => r.status === 200).length;
+  const sandboxToken = report.results.some((r) => r.reason === 'BadDeviceToken');
+
+  let tone: 'ok' | 'warn' = 'warn';
+  let headline: string;
+  let detail: string;
+
+  if (!report.configured) {
+    headline = 'APNs key not configured';
+    detail = 'The server has no Apple push key set, so every push silently no-ops.';
+  } else if (report.devices === 0) {
+    headline = 'No device registered';
+    detail =
+      'No phone is registered to an admin account. Open the iOS app, sign in as yourself ' +
+      '(not a demo account), and allow notifications — the app registers on every launch.';
+  } else if (delivered > 0) {
+    tone = 'ok';
+    headline = `Sent to ${delivered} device${delivered === 1 ? '' : 's'}`;
+    detail = 'Apple accepted it. The banner should be on your phone now.';
+  } else if (sandboxToken) {
+    headline = 'Wrong push environment';
+    detail =
+      'The token came from a debug build (sandbox) but we push to production. ' +
+      'It has been pruned — reopen the TestFlight build to register a fresh one.';
+  } else {
+    headline = 'Apple rejected the push';
+    detail = report.results.map((r) => `${r.status} ${r.reason ?? ''}`).join(', ');
+  }
+
+  return (
+    <div className={`push-report push-report-${tone}`}>
+      <strong>{headline}</strong>
+      <p>{detail}</p>
+      <div className="push-report-meta">
+        {report.devices} device{report.devices === 1 ? '' : 's'}
+        {report.pruned > 0 && ` · ${report.pruned} dead token${report.pruned === 1 ? '' : 's'} pruned`}
+        {report.topic && ` · ${report.topic}`}
+      </div>
+    </div>
   );
 }

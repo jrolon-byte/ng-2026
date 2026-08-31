@@ -148,3 +148,42 @@ export async function setCompanyActive(org_id: string, active: boolean): Promise
   }
   return res.json();
 }
+
+/** One device's verdict from Apple, as reported by `admin-test-push`. */
+export interface PushTestResult {
+  /** Truncated to 8 chars server-side — enough to tell two phones apart. */
+  token: string;
+  status: number;
+  reason: string | null;
+}
+
+export interface PushTestReport {
+  /** False when the APNs key isn't configured on the server at all. */
+  configured: boolean;
+  host: string | null;
+  topic: string | null;
+  /** Devices registered to super admins. Zero means no phone to push to. */
+  devices: number;
+  results: PushTestResult[];
+  /** Tokens Apple rejected as dead; already deleted server-side. */
+  pruned: number;
+}
+
+/**
+ * Fire a test push at the signed-in admin's own devices.
+ *
+ * Push fails silently everywhere else by design — a missing key, an
+ * unregistered phone and a stale token all look identical from outside.
+ * This is the one call that reports which it is.
+ */
+export async function sendTestPush(): Promise<PushTestReport> {
+  const res = await fetch(`${BASE_URL}/admin-test-push`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to send test push' }));
+    throw new Error(err.error || 'Failed to send test push');
+  }
+  return res.json();
+}
