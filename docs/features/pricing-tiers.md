@@ -17,7 +17,7 @@ All prices are defined **inline** in `stripe-checkout.ts` — no pre-created Str
 
 - **Plan → price/name map** — `netlify/functions/stripe-checkout.ts`, `PLAN_CATALOG` record. Each entry has `name` (shown on Stripe invoice) and `unit_amount` (cents). Subscriptions are created with inline `price_data`, not pre-created Price IDs — changing a price is a code edit.
 - **Plan validation** — same file. Accepts `starter | pro | enterprise` only. Any other value returns 400.
-- **Signup `text_limit: 100`** — `netlify/functions/stripe-webhook.ts` in the "Signup flow" branch when creating the org. Changed from `500` on 2026-04-18.
+- **Signup `text_limit: 100`** — `netlify/functions/utils/provision-signup.ts` (`FIRST_BLAST_TEXT_LIMIT`; Pro-referred signups use `PRO_TEXT_LIMIT`). Moved out of `stripe-webhook.ts` on 2026-09-02 when provisioning became shared with the success page — see `docs/features/pay-first-signup.md`. Changed from `500` on 2026-04-18.
 - **Plan → text_limit map** — `netlify/functions/stripe-webhook.ts` in the "Upgrade flow" branch. Record: `{ starter: 600, pro: 1500, enterprise: 4000 }`. Unknown plan falls back to 600.
 - **In-app upgrade UI** — `src/components/UpgradePrompt.tsx` renders three buttons (Starter/Pro/Enterprise) shown to `first_blast` orgs who hit their 100-text limit.
 - **Contact cap** — none. No schema column, no validation path, no UI surface. Every plan is unlimited contacts. Do not add a cap without a deliberate product decision.

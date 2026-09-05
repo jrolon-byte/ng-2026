@@ -4,6 +4,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import SignupSuccess from './pages/SignupSuccess';
+import Welcome from './pages/Welcome';
 import Engage from './pages/Engage';
 import Dashboard from './pages/Dashboard';
 import CampaignHistory from './pages/CampaignHistory';
@@ -19,6 +20,8 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/signup/success" element={<SignupSuccess />} />
+          {/* One-time setup link from the welcome text (pay-first signup). */}
+          <Route path="/welcome" element={<Welcome />} />
           {/* Public legal pages — App Store review, Twilio A2P vetting, and
               SMS recipients reach these without an account. */}
           <Route path="/privacy" element={<Privacy />} />

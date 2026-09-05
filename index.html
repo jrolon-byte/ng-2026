@@ -6,6 +6,25 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>NotifyGrid</title>
+    <script>
+      // GA4. ONE place for the measurement ID; src/utils/analytics.ts only
+      // pushes events and is a no-op until this is set. The landing site
+      // (notifygrid.com, js/ng-analytics.js) uses the same property — same
+      // root domain, so the visitor is one session across both.
+      (function () {
+        var NG_GA_ID = 'G-7LVBY4XFBV';
+        window.dataLayer = window.dataLayer || [];
+        function gtag() { window.dataLayer.push(arguments); }
+        window.gtag = gtag;
+        if (!NG_GA_ID) return;
+        var s = document.createElement('script');
+        s.async = true;
+        s.src = 'https://www.googletagmanager.com/gtag/js?id=' + NG_GA_ID;
+        document.head.appendChild(s);
+        gtag('js', new Date());
+        gtag('config', NG_GA_ID);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

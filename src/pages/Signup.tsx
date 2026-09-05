@@ -1,58 +1,44 @@
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { formatPhoneInput } from '../utils/formatPhoneInput';
-import { BASE_URL } from '../config/api';
+import { startSignupCheckout } from '../services/signup';
+import { track } from '../utils/analytics';
 import Loader from '../components/Loader';
+import ngMark from '../imgs/ng-mark.png';
 
+/**
+ * Pay-first signup: ONE screen, ONE button. The customer types nothing
+ * here — Stripe Checkout collects email, phone, name and business name,
+ * and on a phone that is a single Apple Pay / Google Pay tap. The
+ * password comes after the money, on /signup/success.
+ *
+ * Referral links land here as /signup?ref=CODE and flip the offer to Pro.
+ * The code field is hidden unless a code is present or the customer asks
+ * for it — an empty "code" box sends people off hunting for discounts.
+ */
 export default function Signup() {
-  // Referral links land here as /signup?ref=CODE — prefilled but editable.
   const [searchParams] = useSearchParams();
-  const [businessName, setBusinessName] = useState('');
-  const [name, setName] = useState('');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [phone, setPhone] = useState('');
-  const [referralCode, setReferralCode] = useState(
-    (searchParams.get('ref') ?? '').toUpperCase(),
-  );
-  const [showLoader, setShowLoader] = useState(false);
+  const initialRef = (searchParams.get('ref') ?? '').toUpperCase();
+  const [referralCode, setReferralCode] = useState(initialRef);
+  const [showCodeField, setShowCodeField] = useState(initialRef.length > 0);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // A referral code flips the offer: referred signups go straight to Pro
-  // ($49/mo subscription) instead of the $5 First Blast trial. Live on the
-  // code field so typing/clearing a code updates the terms shown.
   const isReferral = referralCode.trim().length > 0;
 
-  const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!businessName || !name || !username || !password || !phone) {
-      alert('Please fill in all fields');
-      return;
-    }
-    if (username.length < 3) {
-      alert('Username must be at least 3 characters');
-      return;
-    }
-    setShowLoader(true);
+  const onContinue = async () => {
+    setError(null);
+    setBusy(true);
+    track('begin_checkout', {
+      currency: 'USD',
+      value: isReferral ? 49 : 5,
+      items: [{ item_name: isReferral ? 'Pro (referred)' : 'First Blast' }],
+    });
     try {
-      const res = await fetch(`${BASE_URL}/stripe-checkout`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'signup',
-          businessName,
-          name,
-          username,
-          password,
-          phone,
-          ...(referralCode.trim() ? { referralCode: referralCode.trim() } : {}),
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Something went wrong');
-      window.location.href = data.url;
+      const url = await startSignupCheckout(isReferral ? referralCode : undefined);
+      window.location.href = url;
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Something went wrong');
-      setShowLoader(false);
+      setError(err instanceof Error ? err.message : 'Something went wrong');
+      setBusy(false);
     }
   };
 
@@ -61,19 +47,9 @@ export default function Signup() {
       <header className="ng-auth-topbar">
         <div className="ng-auth-topbar-inner">
           <a className="ng-auth-logo" href="https://notifygrid.com/">
-            <span className="ng-auth-logo-mark" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none">
-                <path d="M5 19V5h2.5l9 10V5H19v14h-2.5l-9-10v10H5z" fill="white" />
-                <circle cx="19" cy="6" r="3" fill="white" />
-              </svg>
-            </span>
+            <img className="ng-auth-logo-mark" src={ngMark} alt="" aria-hidden="true" />
             NotifyGrid
           </a>
-          {businessName && (
-            <span className="ng-auth-shop-pill" aria-live="polite">
-              {businessName}
-            </span>
-          )}
           <Link to="/login" className="ng-auth-back">
             Log in
           </Link>
@@ -82,7 +58,7 @@ export default function Signup() {
 
       <main className="ng-auth-main">
         <div>
-          <div className="ng-auth-card ng-auth-card-wide">
+          <div className="ng-auth-card">
             <span className="ng-auth-eyebrow">
               <span className="ng-dot" aria-hidden="true"></span>
               {isReferral ? 'Referral · Pro Plan' : 'First Blast · $5'}
@@ -92,7 +68,7 @@ export default function Signup() {
               {isReferral ? (
                 <>Your friend <em>hooked you up.</em></>
               ) : (
-                <>Start your <em>first blast.</em></>
+                <>Send your <em>first blast.</em></>
               )}
             </h1>
             <p className="ng-auth-sub">
@@ -103,93 +79,31 @@ export default function Signup() {
                 </>
               ) : (
                 <>
-                  100 texts to unlimited contacts. One payment of <strong>$5</strong> — no
-                  auto-renew, no contract.
+                  One payment of <strong>$5</strong>. No auto-renew, no contract, no
+                  card kept on file.
                 </>
               )}
             </p>
 
-            <form className="ng-auth-form" onSubmit={onSubmit}>
-              <div className="ng-auth-field">
-                <label className="ng-auth-label" htmlFor="ng-biz">
-                  Business name
-                </label>
-                <input
-                  id="ng-biz"
-                  className="ng-auth-input"
-                  type="text"
-                  placeholder="Tony Touch Barbershop"
-                  value={businessName}
-                  onChange={(e) => setBusinessName(e.target.value)}
-                  required
-                />
-              </div>
+            <ul className="ng-auth-offer" aria-label="What you get">
+              {isReferral ? (
+                <>
+                  <li>1,500 texts every month</li>
+                  <li>Unlimited contacts</li>
+                  <li>Scheduled campaigns and segments</li>
+                  <li>Two-way reply inbox</li>
+                </>
+              ) : (
+                <>
+                  <li>100 texts, ready the second you pay</li>
+                  <li>Unlimited contacts</li>
+                  <li>Template library</li>
+                  <li>Two-way reply inbox</li>
+                </>
+              )}
+            </ul>
 
-              <div className="ng-auth-field">
-                <label className="ng-auth-label" htmlFor="ng-name">
-                  Your name
-                </label>
-                <input
-                  id="ng-name"
-                  className="ng-auth-input"
-                  type="text"
-                  placeholder="Tony Rivera"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div className="ng-auth-row">
-                <div className="ng-auth-field">
-                  <label className="ng-auth-label" htmlFor="ng-user">
-                    Username
-                  </label>
-                  <input
-                    id="ng-user"
-                    className="ng-auth-input"
-                    type="text"
-                    placeholder="tonytouch"
-                    autoComplete="username"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div className="ng-auth-field">
-                  <label className="ng-auth-label" htmlFor="ng-pass">
-                    Password
-                  </label>
-                  <input
-                    id="ng-pass"
-                    className="ng-auth-input"
-                    type="password"
-                    placeholder="••••••••"
-                    autoComplete="new-password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="ng-auth-field">
-                <label className="ng-auth-label" htmlFor="ng-phone">
-                  Shop phone
-                </label>
-                <input
-                  id="ng-phone"
-                  className="ng-auth-input"
-                  type="tel"
-                  placeholder="(407) 555-0134"
-                  value={phone}
-                  onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
-                  maxLength={14}
-                  required
-                />
-              </div>
-
+            {showCodeField ? (
               <div className="ng-auth-field">
                 <label className="ng-auth-label" htmlFor="ng-ref">
                   Referral code <span className="ng-auth-optional">(optional)</span>
@@ -205,30 +119,42 @@ export default function Signup() {
                   onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
                 />
               </div>
+            ) : (
+              <button
+                type="button"
+                className="ng-auth-toggle-link"
+                onClick={() => setShowCodeField(true)}
+              >
+                Have a referral code?
+              </button>
+            )}
 
-              {showLoader ? (
-                <div className="ng-auth-loader">
-                  <Loader />
-                </div>
-              ) : (
-                <button type="submit" className="ng-auth-submit">
-                  Continue to payment
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
-                    <path d="M5 12h14m-6-6 6 6-6 6" />
-                  </svg>
-                </button>
-              )}
+            {error && (
+              <p className="ng-auth-error" role="alert">
+                {error}
+              </p>
+            )}
 
-              <p className="ng-auth-fineprint">
-                {isReferral
-                  ? 'Secure checkout by Stripe. $49/mo subscription — cancel anytime.'
-                  : 'Secure checkout by Stripe. Cancel anytime before your first blast.'}
-              </p>
-              <p className="ng-auth-fineprint">
-                By continuing you agree to our <Link to="/terms">Terms of Use</Link> and{' '}
-                <Link to="/privacy">Privacy Policy</Link>.
-              </p>
-            </form>
+            {busy ? (
+              <div className="ng-auth-loader">
+                <Loader />
+              </div>
+            ) : (
+              <button type="button" className="ng-auth-submit" onClick={onContinue}>
+                {isReferral ? 'Continue to secure checkout' : 'Pay $5 and start'}
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                  <path d="M5 12h14m-6-6 6 6-6 6" />
+                </svg>
+              </button>
+            )}
+
+            <p className="ng-auth-fineprint">
+              Apple Pay · Google Pay · Link · Card — secure checkout by Stripe
+            </p>
+            <p className="ng-auth-fineprint">
+              By continuing you agree to our <Link to="/terms">Terms of Use</Link> and{' '}
+              <Link to="/privacy">Privacy Policy</Link>.
+            </p>
 
             <p className="ng-auth-meta">
               Already have an account? <Link to="/login">Log in</Link>

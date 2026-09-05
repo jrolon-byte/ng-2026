@@ -2,23 +2,11 @@ import Stripe from "stripe";
 import { getSupabase } from "./utils/supabase";
 import { jsonResponse } from "./utils/cors";
 import { recalcDiscountForReferrerOf, recalcReferrerDiscount } from "./utils/referrals";
-import { alertAdmin } from "./utils/admin-alert";
-import { pushToSuperAdmins } from "./utils/apns";
+import { provisionSignup } from "./utils/provision-signup";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2024-06-20",
 });
-
-function generateSlug(businessName: string): string {
-  const base = businessName
-    .toLowerCase()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9-]/g, "")
-    .replace(/^-+|-+$/g, "");
-
-  const rand = Math.random().toString(36).substring(2, 6);
-  return `${base}-${rand}`;
-}
 
 export default async (req: Request) => {
   if (req.method !== "POST") {
@@ -56,130 +44,13 @@ export default async (req: Request) => {
         const session = event.data.object as Stripe.Checkout.Session;
         const metadata = session.metadata || {};
 
-        // Signup flow – metadata contains username
-        if (metadata.username) {
-          // IDEMPOTENCY: Stripe delivers at-least-once. Without this check a
-          // redelivery re-ran the org insert (fresh random slug = no unique
-          // conflict) and then failed the user insert → 500 → more retries →
-          // one orphan org per attempt, each one inflating referral credit
-          // when the signup was referred. Username is the natural key: if the
-          // user exists, this session was already provisioned — ack and stop.
-          const { data: alreadyProvisioned } = await supabase
-            .from("users")
-            .select("id")
-            .eq("username", metadata.username)
-            .maybeSingle();
-
-          if (alreadyProvisioned) {
-            console.log(
-              `stripe-webhook: signup for "${metadata.username}" already provisioned — acking redelivery`
-            );
-            break;
-          }
-
-          const slug = generateSlug(metadata.business_name);
-
-          // Referred signups checkout as a Pro SUBSCRIPTION (signup_plan
-          // metadata) — the org is born a paying subscriber. Standard
-          // signups are born on the $5 First Blast trial.
-          const isProSignup = metadata.signup_plan === "pro";
-
-          // Create organization
-          const { data: org, error: orgError } = await supabase
-            .from("organizations")
-            .insert({
-              name: metadata.business_name,
-              slug,
-              phone: metadata.phone,
-              plan_status: isProSignup ? "active" : "first_blast",
-              stripe_customer_id: session.customer as string,
-              text_limit: isProSignup ? 1500 : 100,
-              ...(isProSignup && session.subscription
-                ? { stripe_subscription_id: session.subscription as string }
-                : {}),
-              // Referral linkage (validated at checkout).
-              ...(metadata.referred_by_org_id
-                ? { referred_by_org_id: metadata.referred_by_org_id }
-                : {}),
-            })
-            .select("id")
-            .single();
-
-          if (orgError) {
-            console.error("Failed to create organization:", orgError);
-            return jsonResponse({ error: "Failed to create organization" }, 500);
-          }
-
-          // Create user. password_hash arrives pre-bcrypted from checkout
-          // (2026-07-30); metadata.password fallback covers checkout sessions
-          // minted before that deploy — those still lazy-upgrade on login.
-          //
-          // Email is the REAL address Stripe collected at checkout — the only
-          // point in the funnel where the customer types one. The
-          // @notifygrid.app placeholder survives as a fallback because
-          // users.email is UNIQUE and NOT NULL: a missing or already-claimed
-          // address must never fail the insert, since that rolls back a PAID
-          // signup into a retry loop that can't succeed.
-          const realEmail = session.customer_details?.email?.toLowerCase();
-          const placeholderEmail = `${metadata.username}@notifygrid.app`;
-          const newUser = {
-            org_id: org.id,
-            username: metadata.username,
-            password_hash: metadata.password_hash || metadata.password,
-            first_name: metadata.first_name,
-            last_name: metadata.last_name,
-            role: "admin",
-          };
-
-          let { error: userError } = await supabase
-            .from("users")
-            .insert({ ...newUser, email: realEmail || placeholderEmail });
-
-          if (userError?.code === "23505" && realEmail) {
-            ({ error: userError } = await supabase
-              .from("users")
-              .insert({ ...newUser, email: placeholderEmail }));
-          }
-
-          if (userError) {
-            // Roll the org back — a retry re-runs this whole branch cleanly,
-            // and an orphan org must never survive (referred orphans are born
-            // "active" and would count toward the referrer's discount).
-            await supabase.from("organizations").delete().eq("id", org.id);
-            console.error("Failed to create user (org rolled back):", userError);
-            return jsonResponse({ error: "Failed to create user" }, 500);
-          }
-
-          // A referred Pro signup is EARNING from day one — apply the
-          // referrer's $5 immediately, no upgrade step needed.
-          if (isProSignup && metadata.referred_by_org_id) {
-            await recalcReferrerDiscount(supabase, stripe, metadata.referred_by_org_id);
-          }
-
-          // Number provisioning is MANUAL at current volume — buying a Twilio
-          // number is ~$1.15/mo forever, and signups are rare enough that
-          // automating the spend isn't worth it. So: text James instead.
-          // Until he provisions one, the shop sends from the shared number
-          // and can't receive replies. `ensureOrgNumber` in
-          // utils/twilio-numbers.ts does the work when he's ready.
-          const plan = isProSignup ? "Pro $49/mo" : "First Blast $5";
-          const referred = metadata.referred_by_org_id ? " · referred" : "";
-
-          await alertAdmin(
-            `NotifyGrid: new signup — ${metadata.business_name} (${slug}). ` +
-              `${plan}${referred}. ${metadata.phone ?? "no phone"}. ` +
-              `Set up a Twilio number to enable replies. Org ${org.id}`
-          );
-
-          // Same news, on the phone he actually looks at. Additive rather
-          // than a replacement for the text: push depends on a registered
-          // device and a live APNs key, and a signup is the one event that
-          // must not be missed because a token went stale.
-          await pushToSuperAdmins(supabase, {
-            title: "New signup",
-            body: `${metadata.business_name} — ${plan}${referred}. Needs a Twilio number.`,
-            threadId: "signup",
-          });
+        // Signup flow — pay-first (metadata.signup) or legacy (metadata.username).
+        // Provisioning lives in utils/provision-signup.ts because the success
+        // page provisions too; both paths are idempotent on the session id.
+        // A thrown error → 500 → Stripe retries, which is what we want.
+        if (metadata.signup === "1" || metadata.username) {
+          await provisionSignup(supabase, stripe, session);
+          break;
         }
 
         // Upgrade flow – metadata contains org_id

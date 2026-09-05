@@ -13,10 +13,16 @@ export default async (req: Request) => {
   }
 
   try {
-    const { username, password } = await req.json();
+    const body = await req.json();
+    const password = body.password;
+    // One field, two identities: usernames are stored lowercase and emails
+    // are stored lowercase, so the identifier is normalised once and used
+    // for the rate-limit key, both lookups, and the attempt log.
+    const username =
+      typeof body.username === "string" ? body.username.trim().toLowerCase() : "";
 
     if (!username || !password) {
-      return jsonResponse({ error: "Username and password are required" }, 400);
+      return jsonResponse({ error: "Email or username and password are required" }, 400);
     }
 
     const supabase = getSupabase();
@@ -86,6 +92,20 @@ export default async (req: Request) => {
       return jsonResponse(
         { error: "This account has been deactivated. Contact NotifyGrid support." },
         403
+      );
+    }
+
+    // Pay-first signup that hasn't chosen a password yet (migration 023).
+    // Not a credentials failure — no attempt is logged — and the message
+    // points at the setup link they were texted.
+    if (!user.password_hash) {
+      return jsonResponse(
+        {
+          error:
+            "Finish setting up your account — open the setup link we texted you.",
+          setup_pending: true,
+        },
+        409
       );
     }
 

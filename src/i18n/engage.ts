@@ -44,6 +44,9 @@ export interface EngageCopy {
   optedOutCount: (n: number) => string;
   noSearchMatches: string;
   emptyList: string;
+  welcomeTitle: string;
+  welcomeBody: string;
+  welcomeDismiss: string;
   memberSince: string;
   newBadge: (n: number) => string;
   optedOut: string;
@@ -104,6 +107,9 @@ const en: EngageCopy = {
   optedOutCount: (n) => `${n} opted out`,
   noSearchMatches: 'No customers match your search.',
   emptyList: 'Add a customer to see them here.',
+  welcomeTitle: 'Your texts are ready.',
+  welcomeBody: 'Add your customers, write one message, hit send. That’s the whole thing.',
+  welcomeDismiss: 'Got it',
   memberSince: 'Member since',
   newBadge: (n) => (n > 1 ? `${n} new` : 'new'),
   optedOut: 'Opted out',
@@ -165,6 +171,9 @@ const es: EngageCopy = {
   optedOutCount: (n) => `${n} de baja`,
   noSearchMatches: 'Ningún cliente coincide con tu búsqueda.',
   emptyList: 'Añade un cliente y aparecerá aquí.',
+  welcomeTitle: 'Tus mensajes están listos.',
+  welcomeBody: 'Agrega tus clientes, escribe un mensaje y envíalo. Eso es todo.',
+  welcomeDismiss: 'Entendido',
   memberSince: 'Cliente desde',
   newBadge: (n) => (n > 1 ? `${n} nuevos` : 'nuevo'),
   optedOut: 'Dado de baja',

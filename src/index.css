@@ -1820,17 +1820,7 @@ body {
 .ng-auth-logo-mark {
   width: 32px;
   height: 32px;
-  border-radius: 9px;
-  background: var(--ng-brand);
-  display: grid;
-  place-items: center;
-  box-shadow: 0 4px 10px -2px color-mix(in oklab, var(--ng-brand) 40%, transparent);
-}
-
-.ng-auth-logo-mark svg {
-  width: 18px;
-  height: 18px;
-  color: white;
+  object-fit: contain;
 }
 
 .ng-auth-back {
@@ -2875,3 +2865,147 @@ body {
   color: rgba(10, 14, 26, 0.5);
 }
 .ng-auth-legal-links a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+
+
+/* ── Pay-first signup (2026-09) ─────────────────────────────────────── */
+
+.ng-auth-offer {
+  list-style: none;
+  margin: 22px 0 6px;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.ng-auth-offer li {
+  position: relative;
+  padding-left: 26px;
+  font-family: var(--ng-font-body);
+  font-size: 15px;
+  color: var(--ng-ink);
+}
+
+.ng-auth-offer li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--ng-brand) 18%, var(--ng-paper));
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231E7FD4' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+  background-size: 10px;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+.ng-auth-toggle-link {
+  margin-top: 18px;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--ng-font-body);
+  font-size: 13px;
+  color: var(--ng-brand-deep);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.ng-auth-error {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fff1f0;
+  border: 1px solid #ffc9c4;
+  color: #b42318;
+  font-family: var(--ng-font-body);
+  font-size: 14px;
+  animation: ngFadeIn 200ms ease-out both;
+}
+
+@keyframes ngFadeIn {
+  from { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 1; transform: none; }
+}
+
+.ng-auth-input-wrap {
+  position: relative;
+}
+
+.ng-auth-input-wrap .ng-auth-input {
+  padding-right: 64px;
+}
+
+.ng-auth-reveal {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: 0;
+  padding: 6px 8px;
+  cursor: pointer;
+  font-family: var(--ng-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ng-brand-deep);
+  border-radius: 6px;
+}
+
+.ng-auth-reveal:hover {
+  background: color-mix(in oklab, var(--ng-brand) 10%, transparent);
+}
+
+.ng-welcome-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 16px 0 0;
+  padding: 16px 18px;
+  border-radius: 14px;
+  background: color-mix(in oklab, var(--ng-brand) 12%, var(--ng-paper));
+  border: 1px solid color-mix(in oklab, var(--ng-brand) 35%, transparent);
+  animation: ngFadeIn 260ms ease-out both;
+}
+
+.ng-welcome-banner strong {
+  display: block;
+  font-family: var(--ng-font-display);
+  font-size: 18px;
+  color: var(--ng-ink);
+}
+
+.ng-welcome-banner p {
+  margin: 4px 0 0;
+  font-family: var(--ng-font-body);
+  font-size: 14px;
+  color: color-mix(in oklab, var(--ng-ink) 70%, transparent);
+}
+
+.ng-welcome-dismiss {
+  flex: none;
+  background: var(--ng-ink);
+  color: white;
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-family: var(--ng-font-body);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+@media (max-width: 560px) {
+  .ng-welcome-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+.ng-auth-offer + .ng-auth-field {
+  margin-top: 22px;
+}

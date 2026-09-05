@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Loader from '../components/Loader';
+import ngMark from '../imgs/ng-mark.png';
 
 export default function Login() {
   const [username, setUsername] = useState('');
@@ -12,8 +13,8 @@ export default function Login() {
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username || !password || username.length < 3) {
-      alert('Please enter username and password');
+    if (!username.trim() || !password) {
+      alert('Please enter your email or username and password');
       return;
     }
     setShowLoader(true);
@@ -22,8 +23,15 @@ export default function Login() {
       setUsername('');
       setPassword('');
       navigate('/engage');
-    } catch {
-      alert('Incorrect username or password');
+    } catch (err: unknown) {
+      // The one non-credential failure worth naming: a pay-first signup
+      // that hasn't chosen a password yet (server answers 409 with a hint).
+      const message = err instanceof Error ? err.message : '';
+      alert(
+        message.startsWith('Finish setting up')
+          ? message
+          : 'Incorrect email/username or password',
+      );
     }
     setShowLoader(false);
   };
@@ -33,12 +41,7 @@ export default function Login() {
       <header className="ng-auth-topbar">
         <div className="ng-auth-topbar-inner">
           <a className="ng-auth-logo" href="https://notifygrid.com/">
-            <span className="ng-auth-logo-mark" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none">
-                <path d="M5 19V5h2.5l9 10V5H19v14h-2.5l-9-10v10H5z" fill="white" />
-                <circle cx="19" cy="6" r="3" fill="white" />
-              </svg>
-            </span>
+            <img className="ng-auth-logo-mark" src={ngMark} alt="" aria-hidden="true" />
             NotifyGrid
           </a>
           <a className="ng-auth-back" href="https://notifygrid.com/">
@@ -65,14 +68,17 @@ export default function Login() {
             <form className="ng-auth-form" onSubmit={onSubmit}>
               <div className="ng-auth-field">
                 <label className="ng-auth-label" htmlFor="ng-username">
-                  Username
+                  Email or username
                 </label>
                 <input
                   id="ng-username"
                   className="ng-auth-input"
                   type="text"
-                  placeholder="tonytouch"
+                  placeholder="you@shop.com or tonytouch"
                   autoComplete="username"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                 />

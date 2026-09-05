@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
   getContacts,
@@ -25,6 +26,10 @@ import { FaTrashAlt } from 'react-icons/fa';
 
 export default function Engage() {
   const { user } = useAuth();
+  // ?welcome=1 is set once by the pay-first signup flow; dismissing it
+  // strips the param so a refresh doesn't bring the banner back.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const showWelcome = searchParams.get('welcome') === '1';
   const [customerList, setCustomerList] = useState<Contact[]>([]);
   const [showAddCustomer, setShowAddCustomer] = useState(false);
   const [usage, setUsage] = useState<DashboardStats | null>(null);
@@ -438,6 +443,28 @@ export default function Engage() {
   return (
     <div>
       <TopNav />
+
+      {showWelcome && (
+        <div className="contain">
+          <div className="ng-welcome-banner" role="status">
+            <div>
+              <strong>{copy.welcomeTitle}</strong>
+              <p>{copy.welcomeBody}</p>
+            </div>
+            <button
+              type="button"
+              className="ng-welcome-dismiss"
+              onClick={() => {
+                const next = new URLSearchParams(searchParams);
+                next.delete('welcome');
+                setSearchParams(next, { replace: true });
+              }}
+            >
+              {copy.welcomeDismiss}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Title bar */}
       <div className="contain">
