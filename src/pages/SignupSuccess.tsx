@@ -20,9 +20,23 @@ type State =
   | { kind: 'already_set'; businessName: string }
   | { kind: 'error'; message: string };
 
+// Native app return: when Checkout was opened from the iOS app
+// (stripe-checkout appends platform=ios to the return URLs), this page's
+// only job is to bounce straight back into the app, which claims the
+// session natively. No polling here — signup-claim rotates the setup token
+// on every call, and two concurrent claimants would race each other.
+const IOS_SCHEME = 'notifygrid://signup';
+
 export default function SignupSuccess() {
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get('session_id');
+  const isIos = searchParams.get('platform') === 'ios';
+  const iosCancelled = isIos && searchParams.get('cancelled') === '1';
+  const iosReturnUrl = iosCancelled
+    ? `${IOS_SCHEME}?cancelled=1`
+    : isIos && sessionId
+      ? `${IOS_SCHEME}?session_id=${encodeURIComponent(sessionId)}`
+      : null;
   const navigate = useNavigate();
   const { setUserAndToken } = useAuth();
   // No session id is a dead end we know at mount time, so it is the
@@ -39,6 +53,10 @@ export default function SignupSuccess() {
   const cancelled = useRef(false);
 
   useEffect(() => {
+    if (iosReturnUrl) {
+      window.location.href = iosReturnUrl;
+      return;
+    }
     cancelled.current = false;
     if (!sessionId) return;
 
@@ -89,6 +107,30 @@ export default function SignupSuccess() {
       cancelled.current = true;
     };
   }, [sessionId]);
+
+  if (iosReturnUrl) {
+    return (
+      <AuthShell trust="★ YOUR TEXTS ARE READY · UNLIMITED CONTACTS ★">
+        <div className="ng-auth-card ng-auth-success">
+          <span className="ng-auth-eyebrow">
+            <span className="ng-dot" aria-hidden="true"></span>
+            {iosCancelled ? 'Checkout cancelled' : 'Payment confirmed'}
+          </span>
+          <h1 className="ng-auth-title">
+            Back to <em>the app.</em>
+          </h1>
+          <p className="ng-auth-sub">
+            {iosCancelled
+              ? 'No charge was made. Return to NotifyGrid to try again.'
+              : 'Finish setting up your account in the NotifyGrid app.'}
+          </p>
+          <a href={iosReturnUrl} className="ng-auth-submit" style={{ textDecoration: 'none' }}>
+            Open the NotifyGrid app
+          </a>
+        </div>
+      </AuthShell>
+    );
+  }
 
   if (state.kind === 'set_password') {
     return (
