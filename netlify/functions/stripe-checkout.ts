@@ -27,6 +27,10 @@ export default async (req: Request) => {
     // (utils/provision-signup.ts). No PII rides through metadata.
     if (type === "signup") {
       const { referralCode } = body;
+      // Native apps land back in the app: the success/cancel pages carry a
+      // platform marker so /signup/success can bounce to the app's URL
+      // scheme. Anything but the exact literal "ios" is ignored.
+      const platform = body.platform === "ios" ? "ios" : "";
 
       // Optional referral code — resolve to the referrer org up front so a
       // typo'd code fails loudly at signup, not silently in the webhook.
@@ -45,9 +49,11 @@ export default async (req: Request) => {
         referred_by_org_id = referrer.id;
       }
 
-      const cancelUrl = referred_by_org_id
-        ? `${origin}/signup?ref=${encodeURIComponent(referralCode.trim().toUpperCase())}`
-        : `${origin}/signup`;
+      const cancelUrl = platform
+        ? `${origin}/signup/success?platform=ios&cancelled=1`
+        : referred_by_org_id
+          ? `${origin}/signup?ref=${encodeURIComponent(referralCode.trim().toUpperCase())}`
+          : `${origin}/signup`;
 
       const shared: Stripe.Checkout.SessionCreateParams = {
         // Everything provisioning needs, collected by Stripe's own form —
@@ -64,8 +70,9 @@ export default async (req: Request) => {
         metadata: {
           signup: "1",
           ...(referred_by_org_id ? { referred_by_org_id } : {}),
+          ...(platform ? { source: platform } : {}),
         },
-        success_url: `${origin}/signup/success?session_id={CHECKOUT_SESSION_ID}`,
+        success_url: `${origin}/signup/success?session_id={CHECKOUT_SESSION_ID}${platform ? "&platform=ios" : ""}`,
         cancel_url: cancelUrl,
       };
 
