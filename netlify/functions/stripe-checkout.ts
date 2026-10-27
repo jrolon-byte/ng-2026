@@ -2,7 +2,7 @@ import Stripe from "stripe";
 import { getSupabase } from "./utils/supabase";
 import { corsResponse, jsonResponse } from "./utils/cors";
 import { authenticateRequest } from "./utils/auth";
-import { BUSINESS_NAME_FIELD_KEY } from "./utils/signup-session";
+import { InvalidReferralError, createSignupSession } from "./utils/signup-checkout";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2024-06-20",
@@ -25,97 +25,22 @@ export default async (req: Request) => {
     // phone, cardholder name and the business name (custom field); the
     // webhook / success page provision the account from the session itself
     // (utils/provision-signup.ts). No PII rides through metadata.
+    // The session itself is built in utils/signup-checkout.ts, shared with
+    // GET /start (start.ts), the marketing site's direct door.
     if (type === "signup") {
-      const { referralCode } = body;
-      // Native apps land back in the app: the success/cancel pages carry a
-      // platform marker so /signup/success can bounce to the app's URL
-      // scheme. Anything but the exact literal "ios" is ignored.
-      const platform = body.platform === "ios" ? "ios" : "";
-
-      // Optional referral code — resolve to the referrer org up front so a
-      // typo'd code fails loudly at signup, not silently in the webhook.
-      let referred_by_org_id = "";
-      if (typeof referralCode === "string" && referralCode.trim()) {
-        const supabase = getSupabase();
-        const { data: referrer } = await supabase
-          .from("organizations")
-          .select("id, active")
-          .eq("referral_code", referralCode.trim().toUpperCase())
-          .maybeSingle();
-
-        if (!referrer || !referrer.active) {
-          return jsonResponse({ error: "That referral code isn't valid" }, 400);
+      try {
+        const url = await createSignupSession(stripe, getSupabase(), {
+          origin,
+          referralCode: body.referralCode,
+          platform: body.platform,
+        });
+        return jsonResponse({ url });
+      } catch (err) {
+        if (err instanceof InvalidReferralError) {
+          return jsonResponse({ error: err.message }, 400);
         }
-        referred_by_org_id = referrer.id;
+        throw err;
       }
-
-      const cancelUrl = platform
-        ? `${origin}/signup/success?platform=ios&cancelled=1`
-        : referred_by_org_id
-          ? `${origin}/signup?ref=${encodeURIComponent(referralCode.trim().toUpperCase())}`
-          : `${origin}/signup`;
-
-      const shared: Stripe.Checkout.SessionCreateParams = {
-        // Everything provisioning needs, collected by Stripe's own form —
-        // which already knows the customer if they use Link / Apple Pay.
-        phone_number_collection: { enabled: true },
-        custom_fields: [
-          {
-            key: BUSINESS_NAME_FIELD_KEY,
-            label: { type: "custom", custom: "Business name" },
-            type: "text",
-            text: { minimum_length: 2, maximum_length: 60 },
-          },
-        ],
-        metadata: {
-          signup: "1",
-          ...(referred_by_org_id ? { referred_by_org_id } : {}),
-          ...(platform ? { source: platform } : {}),
-        },
-        success_url: `${origin}/signup/success?session_id={CHECKOUT_SESSION_ID}${platform ? "&platform=ios" : ""}`,
-        cancel_url: cancelUrl,
-      };
-
-      // Referred signups go STRAIGHT to Pro (James, 2026-07-30): no First
-      // Blast trial — the friend subscribes at checkout and the referrer's
-      // $5 starts on day one. Non-referred signups keep the $5 trial funnel.
-      const session = referred_by_org_id
-        ? await stripe.checkout.sessions.create({
-            ...shared,
-            mode: "subscription",
-            line_items: [
-              {
-                price_data: {
-                  currency: "usd",
-                  product_data: { name: "NotifyGrid Pro – 1,500 texts/mo" },
-                  unit_amount: 4900,
-                  recurring: { interval: "month" },
-                },
-                quantity: 1,
-              },
-            ],
-            metadata: { ...shared.metadata, signup_plan: "pro" },
-          })
-        : await stripe.checkout.sessions.create({
-            ...shared,
-            mode: "payment",
-            // Always create a Customer: First Blast is a one-time payment
-            // and would otherwise leave stripe_customer_id null until the
-            // first upgrade (invoice.paid / payment_failed key off it).
-            customer_creation: "always",
-            line_items: [
-              {
-                price_data: {
-                  currency: "usd",
-                  product_data: { name: "NotifyGrid Signup – First Blast" },
-                  unit_amount: 500, // $5.00
-                },
-                quantity: 1,
-              },
-            ],
-          });
-
-      return jsonResponse({ url: session.url });
     }
 
     // ── Upgrade: monthly recurring subscription ──

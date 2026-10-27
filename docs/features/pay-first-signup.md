@@ -89,3 +89,32 @@ accounts get one derived from the business name and sign in with the email Strip
 - `/admin/companies` badge for owners with no password yet.
 - Fold `Login.tsx` / `Signup.tsx` onto `AuthShell`.
 - Delete `provisionLegacy` after the 24 h session window.
+
+## `/start`: the marketing site's direct door (2026-10-27)
+
+James: the landing page's "Try for $5" sent people to `/signup`, whose only job was one
+more "Pay $5 and start" click, and that click is friction. Every CTA button on
+notifygrid.com now links to **`https://app.notifygrid.com/start`** (with its
+`utm_campaign` kept), and `netlify/functions/start.ts` (custom path `/start`) creates
+the signup Checkout Session and **302s straight into Stripe**. The path is now landing
+page → card form.
+
+- The session is built by `utils/signup-checkout.ts` (`buildSignupSessionParams`,
+  `createSignupSession`), which `stripe-checkout.ts` (POST `type: "signup"`, used by the
+  `/signup` page and the iOS app) now calls too. One builder, two doors, identical
+  sessions, so provisioning, referrals and the iOS return path are unchanged.
+- `/start?ref=CODE` → Pro subscription credited to the referrer (same rule as `/signup?ref=`).
+  A bad code 302s to `/signup?ref=CODE`, where the page explains. Any other failure 302s to
+  `/signup`, so a marketing click never lands on an error.
+- `utm_campaign` (or `c`) is sanitized to a slug and stored as `metadata.campaign` on the
+  session; nothing reads it yet, it is there for attribution in the Stripe dashboard.
+- Responses carry `Cache-Control: no-store` and `X-Robots-Tag: noindex, nofollow`. Crawlers
+  that follow the button create unpaid sessions, which expire in 24h and create no customer.
+- Why not a Stripe link: a Checkout Session URL (`checkout.stripe.com/c/pay/cs_live_…`) is
+  single-use and expires after 24 hours; a Payment Link cannot carry the referral code or the
+  campaign and would need a second provisioning path.
+- The footer's plain "Sign up" text link and the `/signup` page itself stay as they were.
+
+Tests: `utils/__tests__/signup-checkout.test.ts` (params for First Blast / referred Pro / iOS,
+campaign sanitizing). Routing was verified with `netlify dev` and an invalid Stripe key:
+`GET /start` → 302 to `/signup` from the function, `GET /signup` → the SPA.
