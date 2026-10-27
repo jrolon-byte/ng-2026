@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getCampaigns } from '../services/campaigns';
 import type { Campaign } from '../types';
 import { formatDateShort } from '../utils/formatDate';
 import Layout from '../components/Layout';
 import Loader from '../components/Loader';
-import { MdCheckCircle, MdCancel, MdScheduleSend } from 'react-icons/md';
 
 export default function CampaignHistory() {
   const { user } = useAuth();
@@ -36,11 +36,16 @@ export default function CampaignHistory() {
 
   return (
     <Layout>
-      <div className="page-header">
+      <div className="page-head">
         <div>
           <h1>Campaigns</h1>
-          <p>{campaigns.length} total campaigns</p>
+          <p className="muted">
+            {campaigns.length === 0
+              ? 'Every message you send shows up here.'
+              : `${campaigns.length.toLocaleString()} sent so far.`}
+          </p>
         </div>
+        <Link className="btn btn-primary btn-sm" to="/engage">New message</Link>
       </div>
 
       {error && <div className="alert alert--error">{error}</div>}
@@ -48,7 +53,7 @@ export default function CampaignHistory() {
 
       {!loading && sortedCampaigns.length === 0 && (
         <div className="empty-state">
-          <p>No campaigns yet. Send your first message to get started.</p>
+          <p>No campaigns yet. Send your first message and it will show up here with the delivery count.</p>
         </div>
       )}
 
@@ -57,40 +62,28 @@ export default function CampaignHistory() {
           {sortedCampaigns.map((campaign) => (
             <div className="campaign-card" key={campaign.id}>
               <div className="campaign-card-header">
-                <div className="campaign-date">
-                  <MdScheduleSend />
-                  <span>
-                    {campaign.sent_at
-                      ? formatDateShort(campaign.sent_at)
-                      : formatDateShort(campaign.created_at)}
-                  </span>
-                </div>
-                <span
-                  className={`campaign-status campaign-status--${campaign.status}`}
-                >
+                <span className="campaign-date">
+                  {campaign.sent_at
+                    ? formatDateShort(campaign.sent_at)
+                    : formatDateShort(campaign.created_at)}
+                </span>
+                <span className={`pill campaign-status campaign-status--${campaign.status}`}>
                   {campaign.status}
                 </span>
               </div>
 
               <p className="campaign-body">
-                {campaign.body.length > 140
-                  ? `${campaign.body.slice(0, 140)}...`
+                {campaign.body.length > 160
+                  ? `${campaign.body.slice(0, 160)}...`
                   : campaign.body}
               </p>
 
               <div className="campaign-stats">
-                <div className="campaign-stat">
-                  <MdScheduleSend />
-                  <span>{campaign.total_recipients} sent</span>
-                </div>
-                <div className="campaign-stat campaign-stat--success">
-                  <MdCheckCircle />
-                  <span>{campaign.total_delivered} delivered</span>
-                </div>
-                <div className="campaign-stat campaign-stat--fail">
-                  <MdCancel />
-                  <span>{campaign.total_failed} failed</span>
-                </div>
+                <span className="campaign-stat">{campaign.total_recipients.toLocaleString()} sent</span>
+                <span className="campaign-stat campaign-stat--success">{campaign.total_delivered.toLocaleString()} delivered</span>
+                {campaign.total_failed > 0 && (
+                  <span className="campaign-stat campaign-stat--fail">{campaign.total_failed.toLocaleString()} failed</span>
+                )}
               </div>
             </div>
           ))}

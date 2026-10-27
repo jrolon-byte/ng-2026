@@ -53,17 +53,8 @@ export default function Login() {
       <main className="ng-auth-main">
         <div>
           <div className="ng-auth-card">
-            <span className="ng-auth-eyebrow">
-              <span className="ng-dot" aria-hidden="true"></span>
-              Sign in
-            </span>
-
-            <h1 className="ng-auth-title">
-              Welcome <em>back.</em>
-            </h1>
-            <p className="ng-auth-sub">
-              Let's fill those chairs. Sign in to send your next campaign.
-            </p>
+            <h1 className="ng-auth-title">Welcome back.</h1>
+            <p className="ng-auth-sub">Sign in to send your next message.</p>
 
             <form className="ng-auth-form" onSubmit={onSubmit}>
               <div className="ng-auth-field">
@@ -118,9 +109,7 @@ export default function Login() {
             </p>
           </div>
 
-          <p className="ng-auth-trust">
-            ★ <strong>9 YEARS</strong> SERVING LOCAL SHOPS · BUILT IN KISSIMMEE, FL ★
-          </p>
+          <p className="ng-auth-trust">Sending for businesses since 2016.</p>
           <p className="ng-auth-legal-links">
             <Link to="/terms">Terms</Link> · <Link to="/privacy">Privacy</Link>
           </p>

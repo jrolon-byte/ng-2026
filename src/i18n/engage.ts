@@ -67,6 +67,25 @@ export interface EngageCopy {
   emailOptional: string;
   saveChanges: string;
   couldntSave: string;
+  // 2026-10 shell redesign
+  newMessage: string;
+  toLabel: string;
+  everyone: string;
+  andMore: (n: number) => string;
+  messageLabel: string;
+  charactersLabel: string;
+  textsPerPerson: string;
+  leftThisMonth: string;
+  schedule: string;
+  scheduleSoon: string;
+  sendTo: (n: number) => string;
+  customersTitle: (n: number) => string;
+  addCustomerShort: string;
+  newReplies: (n: number) => string;
+  nobodyYet: string;
+  people: (n: number) => string;
+  segmentHint: string;
+  fromPlan: (n: number) => string;
 }
 
 const en: EngageCopy = {
@@ -131,6 +150,24 @@ const en: EngageCopy = {
   emailOptional: 'Email (optional)',
   saveChanges: 'Save changes',
   couldntSave: "Couldn't save those changes.",
+  newMessage: 'New message',
+  toLabel: 'To',
+  everyone: 'Everyone on your list',
+  andMore: (n) => `and ${n.toLocaleString()} more`,
+  messageLabel: 'Message',
+  charactersLabel: 'Characters',
+  textsPerPerson: 'Segments per text',
+  leftThisMonth: 'Left this month',
+  schedule: 'Schedule',
+  scheduleSoon: 'Scheduling is coming to the web app. For now, send it when it is ready.',
+  sendTo: (n) => `Send to ${n.toLocaleString()}`,
+  customersTitle: (n) => `Your ${n.toLocaleString()} customer${n === 1 ? '' : 's'}`,
+  addCustomerShort: 'Add customer',
+  newReplies: (n) => `${n} new ${n === 1 ? 'reply' : 'replies'}`,
+  nobodyYet: 'Nobody on the list yet. Add your first customer below.',
+  people: (n) => `${n.toLocaleString()} ${n === 1 ? 'person' : 'people'}`,
+  segmentHint: 'An emoji or a special character splits the text into 70-character pieces at the carrier. Your plan still counts it as one text per person.',
+  fromPlan: (n) => `${n.toLocaleString()} ${n === 1 ? 'text' : 'texts'} from your plan`,
 };
 
 const es: EngageCopy = {
@@ -195,6 +232,24 @@ const es: EngageCopy = {
   emailOptional: 'Correo (opcional)',
   saveChanges: 'Guardar cambios',
   couldntSave: 'No se pudieron guardar los cambios.',
+  newMessage: 'Nuevo mensaje',
+  toLabel: 'Para',
+  everyone: 'Todos en tu lista',
+  andMore: (n) => `y ${n.toLocaleString()} más`,
+  messageLabel: 'Mensaje',
+  charactersLabel: 'Caracteres',
+  textsPerPerson: 'Segmentos por texto',
+  leftThisMonth: 'Disponibles este mes',
+  schedule: 'Programar',
+  scheduleSoon: 'Programar envíos llegará pronto a la versión web. Por ahora, envíalo cuando esté listo.',
+  sendTo: (n) => `Enviar a ${n.toLocaleString()}`,
+  customersTitle: (n) => `Tus ${n.toLocaleString()} cliente${n === 1 ? '' : 's'}`,
+  addCustomerShort: 'Añadir cliente',
+  newReplies: (n) => `${n} ${n === 1 ? 'respuesta nueva' : 'respuestas nuevas'}`,
+  nobodyYet: 'Aún no hay nadie en la lista. Añade tu primer cliente abajo.',
+  people: (n) => `${n.toLocaleString()} ${n === 1 ? 'persona' : 'personas'}`,
+  segmentHint: 'Un emoji o un carácter especial divide el texto en partes de 70 caracteres en la operadora. Tu plan lo sigue contando como un texto por persona.',
+  fromPlan: (n) => `${n.toLocaleString()} ${n === 1 ? 'texto' : 'textos'} de tu plan`,
 };
 
 export function getEngageCopy(locale: string | null | undefined): EngageCopy {
