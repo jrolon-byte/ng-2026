@@ -18,11 +18,27 @@ import type { OrgSettings } from '../services/orgs';
 import { formatPhone } from '../utils/formatPhone';
 import { formatPhoneInput } from '../utils/formatPhoneInput';
 import { getEngageCopy } from '../i18n/engage';
-import TopNav from '../components/TopNav';
+import Layout from '../components/Layout';
 import Loader from '../components/Loader';
 import UpgradePrompt from '../components/UpgradePrompt';
 import PlanUsage from '../components/PlanUsage';
-import { FaTrashAlt } from 'react-icons/fa';
+
+// GSM-7 basic set plus the common extension characters. Anything outside it
+// (emoji, curly quotes, long dashes) makes carriers send the whole message as
+// 70-character UCS-2 segments instead of 160, so the "texts per person" tile
+// tells the truth before the money is spent.
+const GSM7 = /^[A-Za-z0-9 \r\n@£$¥èéùìòÇØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!"#¤%&'()*+,\-./:;<=>?¡ÄÖÑÜ§¿äöñüà^{}\\[~\]|€]*$/;
+function segmentsFor(text: string): number {
+  if (text.length === 0) return 1;
+  const per = GSM7.test(text) ? 160 : 70;
+  return Math.max(1, Math.ceil(text.length / per));
+}
+
+const TrashIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6" />
+  </svg>
+);
 
 export default function Engage() {
   const { user } = useAuth();
@@ -126,6 +142,7 @@ export default function Engage() {
   const reachable = customerList.filter((c) => !isUndeliverable(c));
   const sendable = reachable.filter((c) => c.opted_in);
   const optedOutCount = reachable.length - reachable.filter((c) => c.opted_in).length;
+  const replyCount = reachable.reduce((n, c) => n + (c.unread_replies > 0 ? 1 : 0), 0);
 
   // Name matching is case-insensitive; number matching compares digits only,
   // so "555-01" and "(407) 555" both hit the stored E.164 form.
@@ -146,12 +163,29 @@ export default function Engage() {
     : false;
   const isFirstBlastUsed = orgSettings?.plan_status === 'first_blast'
     && usage && usage.sms_this_month > 0;
+  const leftThisMonth = usage ? Math.max(0, usage.grace_limit - usage.sms_this_month) : null;
 
   // Character limit calculation
   const prefix = orgSettings?.message_prefix ?? '';
   const suffix = orgSettings?.message_suffix ?? '';
   const maxChars = 160 - prefix.length - suffix.length;
   const fullPreview = prefix + (message || 'Your message here...') + suffix;
+  // Carrier segments are shown for honesty about delivery, but the plan
+  // allowance deducts ONE per contact per send regardless of segments
+  // (see campaign-send + dashboard-stats). The cost line and the warning
+  // must follow the plan's math, not the carrier's.
+  const segments = segmentsFor(prefix + message + suffix);
+  const sendCost = sendable.length;
+  const overBudget = leftThisMonth !== null && sendCost > leftThisMonth;
+
+  // The "To" line: a few real names, then the rest as a count. A list is a
+  // room full of regulars, not a number.
+  const namePreview = sendable.slice(0, 3).map((c) => c.first_name).join(', ');
+  const remaining = sendable.length - Math.min(3, sendable.length);
+
+  const today = new Date().toLocaleDateString(orgSettings?.locale === 'es' ? 'es' : undefined, {
+    weekday: 'long', hour: 'numeric', minute: '2-digit',
+  });
 
   // Add customer
   const onAddCustomer = async (e: React.FormEvent) => {
@@ -160,7 +194,6 @@ export default function Engage() {
       setAddError(copy.nameAndPhoneRequired);
       return;
     }
-
     try {
       await createContact({
         first_name: name,
@@ -198,6 +231,7 @@ export default function Engage() {
       setPlanSheetOpen(true);
       return;
     }
+
     setSending(true);
     try {
       if (!sendKeyRef.current) {
@@ -236,7 +270,7 @@ export default function Engage() {
       } else {
         alert(copy.sendStillRunning(queued.total_recipients));
       }
-      fetchUsage(); // refresh usage bar
+      fetchUsage(); // refresh usage
     } catch (err) {
       const serverMsg = err instanceof Error ? err.message : '';
       // If the server says we're past the allowance (stale usage data in the
@@ -268,7 +302,6 @@ export default function Engage() {
   };
 
   // ── Contact detail (conversation + edit) ──
-
   const openDetail = (contact: Contact, startEditing = false) => {
     setDetailContact(contact);
     setDetailEditing(startEditing);
@@ -278,7 +311,6 @@ export default function Engage() {
     setDetailError(null);
     setThread(null);
     setThreadLoading(true);
-
     // Opening the thread reads it: mark_read clears the badge server-side,
     // and the local row updates so the badge dies without a refetch.
     const hadUnread = contact.unread_replies > 0;
@@ -349,16 +381,13 @@ export default function Engage() {
 
   if (loading) {
     return (
-      <div>
-        <TopNav />
-        <div className="contain">
-          <Loader />
-        </div>
-      </div>
+      <Layout>
+        <Loader />
+      </Layout>
     );
   }
 
-  const renderCustomerCard = (customer: Contact) => {
+  const renderCustomerRow = (customer: Contact) => {
     const dead = isUndeliverable(customer);
     const hasReply = customer.unread_replies > 0;
 
@@ -367,27 +396,13 @@ export default function Engage() {
         <div className="customer confirmDelete">
           <h3>{copy.removeConfirm(customer.first_name)}</h3>
           <div className="btnOptions">
-            <button
-              className="btn"
-              style={{ color: 'white', background: 'black' }}
-              onClick={() => setConfirmDeleteId(null)}
-            >
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setConfirmDeleteId(null)}>
               {copy.no}
             </button>
-            <button
-              className="btn"
-              style={{ color: 'white', background: 'red' }}
-              onClick={() => onDelete(customer)}
-            >
+            <button type="button" className="btn btn-danger btn-sm" onClick={() => onDelete(customer)}>
               {copy.yes}
             </button>
           </div>
-          {customer.created_at && (
-            <small className="floatRight">
-              {copy.memberSince}:&nbsp;
-              {new Date(customer.created_at).toLocaleDateString()}
-            </small>
-          )}
         </div>
       );
     }
@@ -397,26 +412,18 @@ export default function Engage() {
         className={`customer customer--clickable${hasReply ? ' customer--reply' : ''}${dead ? ' customer--dead' : ''}`}
         onClick={() => openDetail(customer)}
       >
-        <h3>
-          <span className="customer-name">
-            {customer.first_name}
-            {hasReply && <span className="reply-badge">{copy.newBadge(customer.unread_replies)}</span>}
-            {!dead && !customer.opted_in && (
-              <span className="optout-badge">{copy.optedOut}</span>
-            )}
-          </span>
-          <FaTrashAlt
-            onClick={(e) => {
-              e.stopPropagation();
-              setConfirmDeleteId(customer.id);
-            }}
-            style={{ color: 'red', cursor: 'pointer' }}
-          />
-        </h3>
-        <p>{formatPhone(customer.phone)}</p>
-        {dead && (
-          <p className="dead-note">{copy.lastTextsNeverArrived(customer.consecutive_failures)}</p>
-        )}
+        <span className="customer-name">
+          {customer.first_name}
+          {hasReply && <span className="reply-badge">{copy.newBadge(customer.unread_replies)}</span>}
+          {!dead && !customer.opted_in && <span className="optout-badge">{copy.optedOut}</span>}
+        </span>
+        <span className="customer-phone">
+          {formatPhone(customer.phone)}
+          {dead && <span className="dead-note"> · {copy.lastTextsNeverArrived(customer.consecutive_failures)}</span>}
+        </span>
+        <span className="customer-since">
+          {customer.created_at ? `${copy.memberSince} ${new Date(customer.created_at).toLocaleDateString()}` : ''}
+        </span>
         {dead ? (
           <button
             type="button"
@@ -426,177 +433,140 @@ export default function Engage() {
               openDetail(customer, true);
             }}
           >
-            ✏️ {copy.fixNumber}
+            {copy.fixNumber}
           </button>
         ) : (
-          customer.created_at && (
-            <small className="floatRight">
-              {copy.memberSince}:&nbsp;
-              {new Date(customer.created_at).toLocaleDateString()}
-            </small>
-          )
+          <button
+            type="button"
+            className="customer-remove"
+            aria-label={copy.remove}
+            onClick={(e) => {
+              e.stopPropagation();
+              setConfirmDeleteId(customer.id);
+            }}
+          >
+            <TrashIcon />
+          </button>
         )}
       </div>
     );
   };
 
   return (
-    <div>
-      <TopNav />
-
+    <Layout>
       {showWelcome && (
-        <div className="contain">
-          <div className="ng-welcome-banner" role="status">
-            <div>
-              <strong>{copy.welcomeTitle}</strong>
-              <p>{copy.welcomeBody}</p>
-            </div>
-            <button
-              type="button"
-              className="ng-welcome-dismiss"
-              onClick={() => {
-                const next = new URLSearchParams(searchParams);
-                next.delete('welcome');
-                setSearchParams(next, { replace: true });
-              }}
-            >
-              {copy.welcomeDismiss}
-            </button>
+        <div className="ng-welcome-banner" role="status">
+          <div>
+            <strong>{copy.welcomeTitle}</strong>
+            <p>{copy.welcomeBody}</p>
           </div>
-        </div>
-      )}
-
-      {/* Title bar */}
-      <div className="contain">
-        <div className="header">
-          <h2>{copy.title}</h2>
           <button
-            className="btn"
-            style={{ color: 'white', background: 'black' }}
+            type="button"
+            className="ng-welcome-dismiss"
             onClick={() => {
-              setAddError(null);
-              setShowAddCustomer(!showAddCustomer);
+              const next = new URLSearchParams(searchParams);
+              next.delete('welcome');
+              setSearchParams(next, { replace: true });
             }}
           >
-            {showAddCustomer ? copy.close : copy.addCustomer}
+            {copy.welcomeDismiss}
           </button>
         </div>
-      </div>
-
-      {/* Add Customer Form */}
-      {showAddCustomer && (
-        <div className="contain">
-          <div>
-            <h3>{copy.addCustomer}</h3>
-            <form className="add-form">
-              <div className="form-control">
-                <input
-                  type="text"
-                  placeholder={copy.customerName}
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                />
-              </div>
-              <div className="form-control">
-                <input
-                  type="tel"
-                  placeholder={copy.mobileNumber}
-                  value={mobileNum}
-                  onChange={(e) => setMobileNum(formatPhoneInput(e.target.value))}
-                  maxLength={14}
-                />
-              </div>
-              {addError && <p className="errorText">{addError}</p>}
-              <button
-                onClick={onAddCustomer}
-                className="btn btn-block"
-                style={{ color: 'white', background: 'black' }}
-              >
-                {copy.addCustomerCta}
-              </button>
-            </form>
-          </div>
-        </div>
       )}
+
+      <div className="page-head">
+        <h1>{copy.newMessage}</h1>
+        <span className="when">{today}</span>
+      </div>
 
       {/* Plan usage — always visible from day 1 of the cycle so users see
           their reach as it grows. First-blast trial users get UpgradePrompt
           instead; that's a different journey. */}
-      {usage && !loading && !isFirstBlastUsed && (
-        <div className="contain">
-          <PlanUsage
-            usage={usage}
-            open={planSheetOpen}
-            onOpenChange={setPlanSheetOpen}
-          />
-        </div>
+      {usage && !isFirstBlastUsed && (
+        <PlanUsage usage={usage} open={planSheetOpen} onOpenChange={setPlanSheetOpen} />
       )}
+      {isFirstBlastUsed && <UpgradePrompt />}
 
-      {isFirstBlastUsed && (
-        <div className="contain">
-          <UpgradePrompt />
-        </div>
-      )}
-
-      {/* Textarea / Send */}
-      <div className="contain">
-        <form className="engagement-form">
-          <p className="engage-tip">💡 {copy.personalizeTip}</p>
-
-          <div className="form-control">
-            <textarea
-              placeholder={copy.composePlaceholder}
-              value={message}
-              onChange={(e) => {
-                if (e.target.value.length <= maxChars) {
-                  setMessage(e.target.value);
-                  // The idempotency key is bound to THIS text. Editing after
-                  // a failed attempt is a new logical send — without this, a
-                  // retry with the old key would return the old campaign and
-                  // silently drop the edited message.
-                  sendKeyRef.current = null;
-                }
-                if (showNoMessage) setShowNoMessage(false);
-              }}
-              rows={6}
-              maxLength={maxChars}
-            />
-            <div className="engage-char-count">
-              <span>{message.length} / {maxChars}</span>
-            </div>
-            {showNoMessage && (
-              <p className="errorText">{copy.emptyMessageWarning(sendable.length)}</p>
+      {/* Composer */}
+      <form
+        className="card compose engagement-form"
+        onSubmit={(e) => {
+          if (isHardLocked) {
+            e.preventDefault();
+            setPlanSheetOpen(true);
+            return;
+          }
+          onSendMessage(e);
+        }}
+      >
+        <div className="field">
+          <span className="field-label">{copy.toLabel}</span>
+          <div className="to-row">
+            {sendable.length > 0 ? (
+              <span className="to-names">
+                {namePreview}
+                {remaining > 0 && <span className="muted"> {copy.andMore(remaining)}</span>}
+              </span>
+            ) : (
+              <span className="to-names is-empty">{copy.everyone}</span>
             )}
+            <span className="pill">{copy.people(sendable.length)}</span>
+            {replyCount > 0 && <span className="pill pill--reply">{copy.newReplies(replyCount)}</span>}
+            {optedOutCount > 0 && <span className="pill">{copy.optedOutCount(optedOutCount)}</span>}
+            {unreachable.length > 0 && <span className="pill pill--warn">{copy.unreachableHeader(unreachable.length)}</span>}
           </div>
+        </div>
 
-          {/* iMessage-style preview */}
-          {message.length > 0 && (
-            <div className="sms-preview-section">
-              <div className="sms-preview-header">
-                <span className="sms-preview-label">{copy.messagePreview}</span>
-                <button
-                  type="button"
-                  className="sms-preview-edit"
-                  onClick={openSettings}
-                >
-                  {copy.edit}
-                </button>
-              </div>
-              <div className="sms-preview">
-                <div className="sms-bubble">{fullPreview}</div>
-              </div>
-            </div>
+        <div className="field">
+          <label className="field-label" htmlFor="ng-message">{copy.messageLabel}</label>
+          <textarea
+            id="ng-message"
+            placeholder={copy.composePlaceholder}
+            value={message}
+            onChange={(e) => {
+              if (e.target.value.length <= maxChars) {
+                setMessage(e.target.value);
+                // The idempotency key is bound to THIS text. Editing after
+                // a failed attempt is a new logical send — without this, a
+                // retry with the old key would return the old campaign and
+                // silently drop the edited message.
+                sendKeyRef.current = null;
+              }
+              if (showNoMessage) setShowNoMessage(false);
+            }}
+            rows={4}
+            maxLength={maxChars}
+          />
+          <p className="engage-tip">{copy.personalizeTip}</p>
+          {showNoMessage && (
+            <p className="errorText">{copy.emptyMessageWarning(sendable.length)}</p>
           )}
+        </div>
 
-          {/* Inline settings editor */}
-          {editingSettings && (() => {
-            const maxCombined = 50; // keep in step with MAX_WRAPPER in org-settings-update.ts
-            const combinedUsed = editPrefix.length + editSuffix.length;
-            const prefixMax = maxCombined - editSuffix.length;
-            const suffixMax = maxCombined - editPrefix.length;
-            const messageCharsLeft = 160 - combinedUsed;
+        {/* The message as the customer's phone will show it: header, body, footer */}
+        {message.length > 0 && (
+          <div className="preview">
+            <div className="preview-head">
+              <span className="preview-label">{copy.messagePreview}</span>
+              <button type="button" className="sms-preview-edit" onClick={openSettings}>
+                {copy.edit}
+              </button>
+            </div>
+            <div className="sms-preview">
+              <div className="sms-bubble">{fullPreview}</div>
+            </div>
+          </div>
+        )}
 
-            return (
+        {/* Inline settings editor */}
+        {editingSettings && (() => {
+          const maxCombined = 50; // keep in step with MAX_WRAPPER in org-settings-update.ts
+          const combinedUsed = editPrefix.length + editSuffix.length;
+          const prefixMax = maxCombined - editSuffix.length;
+          const suffixMax = maxCombined - editPrefix.length;
+          const messageCharsLeft = 160 - combinedUsed;
+
+          return (
             <div className="settings-editor">
               <div className="form-control">
                 <label className="settings-label">{copy.headerLabel}</label>
@@ -652,109 +622,145 @@ export default function Engage() {
                 <p className="settings-remaining">{copy.languageNote}</p>
               </div>
               <div className="settings-actions">
-                <button
-                  type="button"
-                  className="btn"
-                  style={{ color: 'white', background: 'black' }}
-                  onClick={saveSettings}
-                  disabled={savingSettings}
-                >
+                <button type="button" className="btn btn-sm" onClick={saveSettings} disabled={savingSettings}>
                   {savingSettings ? copy.saving : copy.save}
                 </button>
-                <button
-                  type="button"
-                  className="btn"
-                  style={{ color: '#666', background: '#f4f4f4' }}
-                  onClick={() => setEditingSettings(false)}
-                >
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditingSettings(false)}>
                   {copy.cancel}
                 </button>
               </div>
             </div>
-            );
-          })()}
+          );
+        })()}
 
+        <div className="tiles">
+          <div className="tile">
+            <div className="tile-label">{copy.charactersLabel}</div>
+            <div className="tile-value">{message.length}<small>/ {maxChars}</small></div>
+          </div>
+          <div className="tile" title={segments > 1 ? copy.segmentHint : undefined}>
+            <div className="tile-label">{copy.textsPerPerson}</div>
+            <div className="tile-value">{segments}</div>
+            {segments > 1 && <div className="tile-hint">{copy.segmentHint}</div>}
+          </div>
+          <div className={`tile${overBudget ? ' tile--warn' : ''}`}>
+            <div className="tile-label">{copy.leftThisMonth}</div>
+            <div className="tile-value">{leftThisMonth === null ? '—' : leftThisMonth.toLocaleString()}</div>
+          </div>
+        </div>
+
+        <div className="compose-actions">
+          <span className="note">
+            {sendable.length === 0 ? copy.nobodyYet : copy.fromPlan(sendCost)}
+          </span>
+          <button type="button" className="btn btn-quiet" disabled title={copy.scheduleSoon}>
+            {copy.schedule}
+          </button>
           {sending ? (
             <Loader />
           ) : (
-            <button
-              onClick={(e) => {
-                if (isHardLocked) {
-                  e.preventDefault();
-                  setPlanSheetOpen(true);
-                  return;
-                }
-                onSendMessage(e);
-              }}
-              className="btn btn-blue"
-              style={{ color: 'white', background: '#3399ff' }}
-              disabled={sendable.length === 0}
-            >
-              {copy.sendCta}
+            <button type="submit" className="btn btn-primary" disabled={sendable.length === 0}>
+              {copy.sendTo(sendable.length)}
             </button>
           )}
-        </form>
+        </div>
+      </form>
+
+      {/* Customers */}
+      <div className="section-title">
+        <h2>
+          {copy.customersTitle(reachable.length)}
+          {optedOutCount > 0 && <span className="count">{copy.optedOutCount(optedOutCount)}</span>}
+        </h2>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={() => {
+            setAddError(null);
+            setShowAddCustomer(!showAddCustomer);
+          }}
+        >
+          {showAddCustomer ? copy.close : copy.addCustomerShort}
+        </button>
       </div>
+
+      {showAddCustomer && (
+        <form className="card add-form" onSubmit={onAddCustomer}>
+          <div className="form-control">
+            <label htmlFor="ng-new-name">{copy.customerName}</label>
+            <input
+              id="ng-new-name"
+              type="text"
+              placeholder={copy.customerName}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              autoFocus
+            />
+          </div>
+          <div className="form-control">
+            <label htmlFor="ng-new-phone">{copy.mobileNumber}</label>
+            <input
+              id="ng-new-phone"
+              type="tel"
+              placeholder="(407) 555-0134"
+              value={mobileNum}
+              onChange={(e) => setMobileNum(formatPhoneInput(e.target.value))}
+              maxLength={14}
+            />
+          </div>
+          {addError && <p className="errorText">{addError}</p>}
+          <div className="settings-actions">
+            <button type="submit" className="btn btn-primary">{copy.addCustomerCta}</button>
+          </div>
+        </form>
+      )}
+
+      {reachable.length > 0 ? (
+        <>
+          <div className="customer-search">
+            <input
+              type="search"
+              placeholder={copy.searchPlaceholder}
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+            />
+          </div>
+          {visibleReachable.length === 0 ? (
+            <p className="no-matches">{copy.noSearchMatches}</p>
+          ) : (
+            <div className="list">
+              {visibleReachable.map((customer) => (
+                <div key={customer.id}>{renderCustomerRow(customer)}</div>
+              ))}
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="empty-state"><p>{copy.emptyList}</p></div>
+      )}
 
       {/* Dead numbers — separated from the working list: these aren't
           customers you can reach, they're a cleanup job. */}
       {unreachable.length > 0 && (
-        <div className="contain">
-          <div className="unreachable-section">
-            <button
-              type="button"
-              className="unreachable-header"
-              onClick={() => setShowUnreachable(!showUnreachable)}
-            >
-              <span>⚠️ {copy.unreachableHeader(unreachable.length)}</span>
-              <span className={`unreachable-chevron${showUnreachable ? ' unreachable-chevron--open' : ''}`}>›</span>
-            </button>
-            {showUnreachable && (
-              <div className="unreachable-body">
-                <p className="unreachable-explainer">{copy.unreachableExplainer}</p>
-                {visibleUnreachable.map((customer) => (
-                  <div key={customer.id}>{renderCustomerCard(customer)}</div>
-                ))}
-              </div>
-            )}
-          </div>
+        <div className="unreachable-section">
+          <button
+            type="button"
+            className="unreachable-header"
+            onClick={() => setShowUnreachable(!showUnreachable)}
+          >
+            <span>{copy.unreachableHeader(unreachable.length)}</span>
+            <span className={`unreachable-chevron${showUnreachable ? ' unreachable-chevron--open' : ''}`}>›</span>
+          </button>
+          {showUnreachable && (
+            <div className="unreachable-body">
+              <p className="unreachable-explainer">{copy.unreachableExplainer}</p>
+              {visibleUnreachable.map((customer) => (
+                <div key={customer.id}>{renderCustomerRow(customer)}</div>
+              ))}
+            </div>
+          )}
         </div>
       )}
-
-      {/* Customer List */}
-      <div className="contain">
-        {reachable.length > 0 ? (
-          <>
-            <div className="customer-list-header">
-              <small>
-                {copy.yourCustomers(sendable.length)}
-                {optedOutCount > 0 && (
-                  <span className="optout-badge optout-badge--inline">
-                    {copy.optedOutCount(optedOutCount)}
-                  </span>
-                )}
-              </small>
-            </div>
-            <div className="customer-search">
-              <input
-                type="search"
-                placeholder={copy.searchPlaceholder}
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-              />
-            </div>
-            {visibleReachable.length === 0 ? (
-              <p className="no-matches">{copy.noSearchMatches}</p>
-            ) : (
-              visibleReachable.map((customer) => (
-                <div key={customer.id}>{renderCustomerCard(customer)}</div>
-              ))
-            )}
-          </>
-        ) : (
-          <p>{copy.emptyList}</p>
-        )}
-      </div>
 
       {/* Contact detail overlay: the conversation, plus editing */}
       {detailContact && (
@@ -791,19 +797,10 @@ export default function Engage() {
                 </div>
                 {detailError && <p className="errorText">{detailError}</p>}
                 <div className="settings-actions">
-                  <button
-                    className="btn"
-                    style={{ color: 'white', background: 'black' }}
-                    onClick={onSaveContact}
-                    disabled={savingContact}
-                  >
+                  <button type="button" className="btn btn-primary btn-sm" onClick={onSaveContact} disabled={savingContact}>
                     {savingContact ? copy.saving : copy.saveChanges}
                   </button>
-                  <button
-                    className="btn"
-                    style={{ color: '#666', background: '#f4f4f4' }}
-                    onClick={() => setDetailEditing(false)}
-                  >
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDetailEditing(false)}>
                     {copy.cancel}
                   </button>
                 </div>
@@ -818,11 +815,7 @@ export default function Engage() {
                       <span className="optout-badge">{copy.optedOut}</span>
                     )}
                   </div>
-                  <button
-                    type="button"
-                    className="sms-preview-edit"
-                    onClick={() => setDetailEditing(true)}
-                  >
+                  <button type="button" className="sms-preview-edit" onClick={() => setDetailEditing(true)}>
                     {copy.edit}
                   </button>
                 </div>
@@ -836,13 +829,8 @@ export default function Engage() {
                       <p className="thread-omitted">{copy.earlierHidden(thread.omitted_count)}</p>
                     )}
                     {thread.messages.map((m) => (
-                      <div
-                        key={m.id}
-                        className={`thread-row thread-row--${m.direction}`}
-                      >
-                        <div className={`thread-bubble thread-bubble--${m.direction}`}>
-                          {m.body}
-                        </div>
+                      <div key={m.id} className={`thread-row thread-row--${m.direction}`}>
+                        <div className={`thread-bubble thread-bubble--${m.direction}`}>{m.body}</div>
                         {m.created_at && (
                           <small className="thread-time">
                             {new Date(m.created_at).toLocaleDateString()}
@@ -858,18 +846,10 @@ export default function Engage() {
                 )}
 
                 <div className="settings-actions">
-                  <button
-                    className="btn"
-                    style={{ color: 'white', background: 'red' }}
-                    onClick={() => onDelete(detailContact)}
-                  >
+                  <button type="button" className="btn btn-danger btn-sm" onClick={() => onDelete(detailContact)}>
                     {copy.remove}
                   </button>
-                  <button
-                    className="btn"
-                    style={{ color: '#666', background: '#f4f4f4' }}
-                    onClick={closeDetail}
-                  >
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={closeDetail}>
                     {copy.close}
                   </button>
                 </div>
@@ -878,6 +858,6 @@ export default function Engage() {
           </div>
         </div>
       )}
-    </div>
+    </Layout>
   );
 }

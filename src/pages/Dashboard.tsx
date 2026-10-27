@@ -6,7 +6,6 @@ import Layout from '../components/Layout';
 import Loader from '../components/Loader';
 import AdminGiftManager from '../components/AdminGiftManager';
 import ReferralCard from '../components/ReferralCard';
-import { MdTextsms, MdAllInclusive, MdPeople, MdCampaign } from 'react-icons/md';
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -33,42 +32,24 @@ export default function Dashboard() {
 
   const cards = stats
     ? [
-        {
-          label: 'SMS This Month',
-          value: (stats.sms_this_month ?? 0).toLocaleString(),
-          icon: <MdTextsms />,
-          color: '#3399ff',
-        },
-        {
-          label: 'Lifetime SMS',
-          value: (stats.sms_lifetime ?? 0).toLocaleString(),
-          icon: <MdAllInclusive />,
-          color: '#8b5cf6',
-        },
-        {
-          label: 'Total Contacts',
-          value: (stats.total_contacts ?? 0).toLocaleString(),
-          icon: <MdPeople />,
-          color: '#10b981',
-        },
-        {
-          label: 'Total Campaigns',
-          value: (stats.total_campaigns ?? 0).toLocaleString(),
-          icon: <MdCampaign />,
-          color: '#f59e0b',
-        },
+        { label: 'Texts sent this month', value: (stats.sms_this_month ?? 0).toLocaleString() },
+        { label: 'Texts sent all time', value: (stats.sms_lifetime ?? 0).toLocaleString() },
+        { label: 'Customers', value: (stats.total_contacts ?? 0).toLocaleString() },
+        { label: 'Campaigns', value: (stats.total_campaigns ?? 0).toLocaleString() },
       ]
     : [];
 
   const admin = stats?.admin;
+  const today = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
 
   return (
     <Layout>
-      <div className="page-header">
+      <div className="page-head">
         <div>
           <h1>Dashboard</h1>
-          <p>Welcome back, {user?.first_name}</p>
+          <p className="muted">Welcome back, {user?.first_name}.</p>
         </div>
+        <span className="when">{today}</span>
       </div>
 
       {loading && <Loader />}
@@ -78,16 +59,8 @@ export default function Dashboard() {
         <div className="stats-grid">
           {cards.map((card) => (
             <div className="stat-card" key={card.label}>
-              <div
-                className="stat-card-icon"
-                style={{ backgroundColor: `${card.color}15`, color: card.color }}
-              >
-                {card.icon}
-              </div>
-              <div className="stat-card-info">
-                <span className="stat-card-value">{card.value}</span>
-                <span className="stat-card-label">{card.label}</span>
-              </div>
+              <span className="stat-card-value">{card.value}</span>
+              <span className="stat-card-label">{card.label}</span>
             </div>
           ))}
         </div>

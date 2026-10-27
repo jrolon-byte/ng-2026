@@ -1,17 +1,11 @@
 import type { ReactNode } from 'react';
-import TopNav from './TopNav';
+import Shell from './Shell';
 
 interface LayoutProps {
   children: ReactNode;
 }
 
+/** Kept as the name the pages import; the frame itself lives in Shell. */
 export default function Layout({ children }: LayoutProps) {
-  return (
-    <>
-      <TopNav />
-      <main className="contain">
-        {children}
-      </main>
-    </>
-  );
+  return <Shell>{children}</Shell>;
 }
