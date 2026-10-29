@@ -40,7 +40,7 @@ export default async (req: Request) => {
     const { data: orgs, error } = await supabase
       .from("organizations")
       .select(
-        "id, name, slug, phone, locale, plan_status, text_limit, active, created_at, stripe_customer_id, stripe_subscription_id, bonus_extra_texts, bonus_expires_at, referral_code, referred_by_org_id"
+        "id, name, slug, phone, locale, plan_status, text_limit, active, created_at, stripe_customer_id, stripe_subscription_id, bonus_extra_texts, bonus_expires_at, referral_code, referred_by_org_id, referral_credited_at"
       )
       .order("created_at", { ascending: false });
 
@@ -80,14 +80,13 @@ export default async (req: Request) => {
     );
 
     // Referral rollups — the full roster is already in memory, so who-referred
-    // -whom and per-referrer earning counts are pure lookups. "Earning" uses
-    // the same rule as the discount engine (utils/referrals.ts).
+    // -whom and per-referrer credited counts are pure lookups. "Credited"
+    // means the referrer received their one-time $5 for that org
+    // (utils/referrals.ts).
     const nameById = new Map(orgList.map((o) => [o.id, o.name]));
-    const isEarning = (o: (typeof orgList)[number]) =>
-      o.active && ["active", "past_due"].includes(o.plan_status);
     const earningReferralsByReferrer = new Map<string, number>();
     for (const o of orgList) {
-      if (o.referred_by_org_id && isEarning(o)) {
+      if (o.referred_by_org_id && o.referral_credited_at) {
         earningReferralsByReferrer.set(
           o.referred_by_org_id,
           (earningReferralsByReferrer.get(o.referred_by_org_id) ?? 0) + 1

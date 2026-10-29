@@ -1,7 +1,7 @@
 import Stripe from "stripe";
 import { getSupabase } from "./utils/supabase";
 import { jsonResponse } from "./utils/cors";
-import { recalcDiscountForReferrerOf, recalcReferrerDiscount } from "./utils/referrals";
+import { grantPendingReferralCredits, grantReferralCredit } from "./utils/referrals";
 import { provisionSignup } from "./utils/provision-signup";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -187,13 +187,13 @@ export default async (req: Request) => {
           }
 
           // This org just became (or stayed) a paying subscriber — if someone
-          // referred them, the referrer's $5/referral discount kicks in now.
-          await recalcDiscountForReferrerOf(supabase, stripe, metadata.org_id);
+          // referred them, the referrer's one-time $5 lands now (exactly once;
+          // the engine ignores repeats).
+          await grantReferralCredit(supabase, stripe, metadata.org_id);
 
-          // And if this org is itself a REFERRER, its credit was attached to
-          // the subscription we just replaced — reapply it to the new one, or
-          // a plan change would silently eat their referral discount.
-          await recalcReferrerDiscount(supabase, stripe, metadata.org_id);
+          // And if this org is itself a REFERRER that was owed credits while
+          // it had no Stripe customer, settle them now.
+          await grantPendingReferralCredits(supabase, stripe, metadata.org_id);
         }
 
         break;
@@ -241,14 +241,8 @@ export default async (req: Request) => {
         const subscription = event.data.object as Stripe.Subscription;
         const subscriptionId = subscription.id;
 
-        // Resolve the org BEFORE the update so the referrer recalc knows who
-        // cancelled — a cancelled referral's $5 comes off the referrer's bill.
-        const { data: cancelledOrg } = await supabase
-          .from("organizations")
-          .select("id")
-          .eq("stripe_subscription_id", subscriptionId)
-          .maybeSingle();
-
+        // No referral clawback: the $5 a referral earned is one-time and
+        // already spent by the time it cancels.
         const { error } = await supabase
           .from("organizations")
           .update({ plan_status: "cancelled", text_limit: 0 })
@@ -257,17 +251,14 @@ export default async (req: Request) => {
         if (error) {
           console.error("Failed to update org on subscription.deleted:", error);
         }
-
-        if (cancelledOrg) {
-          await recalcDiscountForReferrerOf(supabase, stripe, cancelledOrg.id);
-        }
         break;
       }
 
       // ── Dispute opened – hostile signal, shut the org down ──
       // A chargeback means the cardholder told their bank the charge is
       // fraudulent. Deactivate (login + sending blocked, history kept),
-      // cancel their subscription, and drop them from any referrer's credit.
+      // and cancel their subscription. A referral credit they earned someone is
+      // one-time and stays granted.
       // Reactivation is one click on /admin/companies if it's a mistake.
       case "charge.dispute.created": {
         const dispute = event.data.object as Stripe.Dispute;
@@ -298,7 +289,6 @@ export default async (req: Request) => {
               );
             }
           }
-          await recalcDiscountForReferrerOf(supabase, stripe, org.id);
           console.error(
             `BILLING ALERT: dispute ${dispute.id} — org "${org.name}" deactivated and subscription cancelled. Review in Stripe.`
           );

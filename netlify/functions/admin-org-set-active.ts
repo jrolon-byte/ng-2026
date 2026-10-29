@@ -2,7 +2,6 @@ import Stripe from "stripe";
 import { getSupabase } from "./utils/supabase";
 import { corsResponse, jsonResponse } from "./utils/cors";
 import { authenticateRequest } from "./utils/auth";
-import { recalcDiscountForReferrerOf } from "./utils/referrals";
 
 /**
  * Super admin: deactivate or reactivate a company. This is the "archive,
@@ -95,9 +94,8 @@ export default async (req: Request) => {
         }
       }
 
-      // Deactivating a referred org drops its $5 from the referrer's bill;
-      // reactivating restores it. Never fatal — see utils/referrals.ts.
-      await recalcDiscountForReferrerOf(supabase, stripe, org_id);
+      // Referral credit is one-time (utils/referrals.ts): deactivating a
+      // referred org does not take back the $5 its referrer already earned.
     }
 
     console.log(

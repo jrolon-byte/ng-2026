@@ -16,7 +16,7 @@
 import type Stripe from "stripe";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import twilio from "twilio";
-import { recalcReferrerDiscount } from "./referrals";
+import { grantReferralCredit } from "./referrals";
 import { alertAdmin } from "./admin-alert";
 import { pushToSuperAdmins } from "./apns";
 import { normalizePhone } from "./phone";
@@ -265,8 +265,9 @@ async function provisionPayFirst(
 
   // ── Side effects, first provision only ──
   if (data.isPro && data.referredByOrgId) {
-    // A referred Pro signup is EARNING from day one.
-    await recalcReferrerDiscount(supabase, stripe, data.referredByOrgId);
+    // A referred Pro signup is a successful referral the moment it is
+    // provisioned: the referrer's one-time $5 lands now.
+    await grantReferralCredit(supabase, stripe, org.id);
   }
 
   if (phoneE164) {
@@ -377,7 +378,7 @@ async function provisionLegacy(
   }
 
   if (isPro && metadata.referred_by_org_id) {
-    await recalcReferrerDiscount(supabase, stripe, metadata.referred_by_org_id);
+    await grantReferralCredit(supabase, stripe, org.id);
   }
 
   await notifyOperator(

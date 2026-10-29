@@ -5,7 +5,6 @@ import type { DashboardStats } from '../types';
 import Layout from '../components/Layout';
 import Loader from '../components/Loader';
 import AdminGiftManager from '../components/AdminGiftManager';
-import ReferralCard from '../components/ReferralCard';
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -65,9 +64,6 @@ export default function Dashboard() {
           ))}
         </div>
       )}
-
-      {/* Refer & earn — every org */}
-      {stats && <ReferralCard />}
 
       {/* Super Admin — Cost Estimator */}
       {admin && (

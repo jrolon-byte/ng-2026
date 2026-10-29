@@ -180,7 +180,7 @@ export default function AdminCompanyCreateForm({ onCreated }: { onCreated: () =>
           <input
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            placeholder="tonytouch"
+            placeholder="username"
             autoCapitalize="none"
             autoCorrect="off"
           />

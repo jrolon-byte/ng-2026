@@ -50,3 +50,14 @@ every API call 404s and the screens stay empty.
 
 `src/components/TopNav.tsx`, `BottomNav.tsx`, `Navbar.tsx`, and the stylesheet sections
 for the old top bar, hamburger, mobile menu, grey customer cards and colored stat cards.
+
+## Refer and earn card (2026-10-26)
+
+Lives on Engage between the composer and the customers. The rule is **$5 off, once, per
+successful referral, no cap**; the full mechanics, surfaces and the one-time switch-over steps
+are in `docs/features/referral-program.md`.
+
+## iOS parity
+
+Every item above must be mirrored in the iOS app. The checklist for that work is
+`notifygrid-ios/docs/web-parity-2026-10.md`; keep it current when the web changes.

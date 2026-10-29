@@ -7,7 +7,7 @@ import { alertAdmin } from "./utils/admin-alert";
  * "Delete my account", filed from the app.
  *
  * Closing an org for real means cancelling its Stripe subscription, releasing
- * its Twilio number, and recalculating any referrer's discount — three things
+ * its Twilio number, and settling billing by hand — three things
  * that cost money to get wrong and that no one should trigger by mis-tapping a
  * phone. So this records the request, texts James, and stops. He finishes it.
  *
@@ -83,7 +83,7 @@ export default async (req: Request) => {
     await alertAdmin(
       `NotifyGrid: ${org.name} (${org.slug}) requested account deletion. ` +
         `Requested by ${auth.email}. Plan: ${org.plan_status}. ` +
-        `Cancel Stripe, release their Twilio number, recalc any referrer.`
+        `Cancel Stripe and release their Twilio number.`
     );
 
     return jsonResponse({ success: true, requested_at: requestedAt });

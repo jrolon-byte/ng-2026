@@ -10,7 +10,8 @@ function getHeaders(): HeadersInit {
 
 export interface ReferralRow {
   name: string;
-  status: 'earning' | 'pending' | 'ended';
+  /** credited: the $5 landed; pending: signed up, not credited yet; ended: left before it did. */
+  status: 'credited' | 'pending' | 'ended';
   since: string;
 }
 
@@ -18,8 +19,10 @@ export interface ReferralStats {
   code: string;
   locale: 'en' | 'es';
   referrals: ReferralRow[];
-  earning_count: number;
-  monthly_credit_cents: number;
+  /** Referrals that earned their one-time $5. */
+  credited_count: number;
+  /** Total one-time credit earned, in cents. */
+  credit_cents: number;
 }
 
 export async function getReferralStats(): Promise<ReferralStats> {

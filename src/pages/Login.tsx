@@ -65,7 +65,7 @@ export default function Login() {
                   id="ng-username"
                   className="ng-auth-input"
                   type="text"
-                  placeholder="you@shop.com or tonytouch"
+                  placeholder="username"
                   autoComplete="username"
                   autoCapitalize="none"
                   autoCorrect="off"

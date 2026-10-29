@@ -237,9 +237,9 @@ export default function AdminCompanies() {
                         {c.earning_referrals > 0 && (
                           <div
                             className="companies-referral-credit"
-                            title={`${c.earning_referrals} active referral(s) — $5/mo each`}
+                            title={`${c.earning_referrals} credited referral(s) — $5 once each`}
                           >
-                            {c.earning_referrals} ref → −${c.earning_referrals * 5}/mo
+                            {c.earning_referrals} ref → ${c.earning_referrals * 5} credited
                           </div>
                         )}
                       </td>

@@ -2,17 +2,18 @@ import { randomBytes } from "node:crypto";
 import { getSupabase } from "./utils/supabase";
 import { corsResponse, jsonResponse } from "./utils/cors";
 import { authenticateRequest } from "./utils/auth";
-import { REFERRAL_CREDIT_CENTS } from "./utils/referrals";
+import { REFERRAL_CREDIT_CENTS, isSuccessfulReferral } from "./utils/referrals";
 
 /**
  * The current org's referral card: its shareable code (lazily generated on
  * first open — no backfill needed for existing orgs), the referrals it has
- * made with their status, and the resulting monthly credit.
+ * made with their status, and the one-time credit they earned.
  *
- * A referral shows as "earning" once it's an active paying subscriber
- * (plan_status active/past_due + org active) — same rule the discount
- * engine counts. Signed-up-but-not-upgraded referrals show as "pending"
- * so the referrer sees their pipeline, not just their payoff.
+ * Statuses: "credited" (the referrer got their $5 for this one), "pending"
+ * (signed up, not a paying subscriber yet, or the referrer has no Stripe
+ * customer to credit), "ended" (cancelled or deactivated before ever being
+ * credited). A credited referral stays credited after it cancels: the $5
+ * was one-time and is already theirs.
  */
 
 function generateReferralCode(orgName: string): string {
@@ -84,28 +85,34 @@ export default async (req: Request) => {
 
     const { data: referrals } = await supabase
       .from("organizations")
-      .select("name, plan_status, active, created_at")
+      .select("name, plan_status, active, created_at, referral_credited_at")
       .eq("referred_by_org_id", org.id)
       .order("created_at", { ascending: false });
 
     const rows = (referrals ?? []).map((r) => {
-      const earning = r.active && ["active", "past_due"].includes(r.plan_status);
-      const status = earning
-        ? "earning"
+      const status = r.referral_credited_at
+        ? "credited"
         : !r.active || r.plan_status === "cancelled"
           ? "ended"
-          : "pending";
+          : isSuccessfulReferral(r)
+            ? "pending" // paying, but the referrer has no Stripe customer yet
+            : "pending";
       return { name: r.name, status, since: r.created_at };
     });
 
-    const earningCount = rows.filter((r) => r.status === "earning").length;
+    const creditedCount = rows.filter((r) => r.status === "credited").length;
+    const creditCents = creditedCount * REFERRAL_CREDIT_CENTS;
 
     return jsonResponse({
       code,
       locale: org.locale ?? "en",
       referrals: rows,
-      earning_count: earningCount,
-      monthly_credit_cents: earningCount * REFERRAL_CREDIT_CENTS,
+      credited_count: creditedCount,
+      credit_cents: creditCents,
+      // Kept for clients built against the recurring-credit shape; same
+      // numbers, one-time meaning.
+      earning_count: creditedCount,
+      monthly_credit_cents: creditCents,
     });
   } catch (err) {
     console.error("referrals-stats error:", err);

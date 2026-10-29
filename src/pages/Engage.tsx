@@ -22,6 +22,7 @@ import Layout from '../components/Layout';
 import Loader from '../components/Loader';
 import UpgradePrompt from '../components/UpgradePrompt';
 import PlanUsage from '../components/PlanUsage';
+import ReferralCard, { planByLimit } from '../components/ReferralCard';
 
 // GSM-7 basic set plus the common extension characters. Anything outside it
 // (emoji, curly quotes, long dashes) makes carriers send the whole message as
@@ -665,6 +666,10 @@ export default function Engage() {
           )}
         </div>
       </form>
+
+      {/* Refer and earn — lives here because Engage is where people spend
+          their time; the Dashboard is a stats page nobody opens daily. */}
+      {usage && <ReferralCard plan={planByLimit(usage.text_limit)} />}
 
       {/* Customers */}
       <div className="section-title">
